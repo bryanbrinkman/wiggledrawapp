@@ -45,7 +45,8 @@ The **Mint onchain** section at the bottom builds a token URI that follows the [
 - The SVG is embedded as `data:image/svg+xml;base64,…` in the `image` field.
 - `name`, `description`, `attributes` (wiggle, speed, frames, layers, strokes), `media` (size, dimensions, mime type) and `image_sha256` are filled in for you.
 - The whole metadata object is wrapped as `data:application/json;base64,…` — that string is the token URI.
-- The meter shows the token URI's size against the 24 KB limit and turns red when you're over. Fewer strokes, frames, or layers bring it down.
+- The meter shows the token URI's size against the 24 KB limit. When a stroke would cross it, the canvas flashes red, the stroke is rejected, and drawing is blocked until you undo, lower **Frames**, or press **Fit to 24 KB**, which re‑simplifies your strokes (and drops to 2 frames if it must) until the token fits. Fit can be undone until you draw again.
+- Paths are stored as compact relative coordinates and strokes are simplified with Douglas‑Peucker as you draw, so a typical drawing is several times smaller than a naive export.
 
 **Copy token URI** puts the finished string on your clipboard to paste into the mint form. **Download token JSON** saves the unwrapped metadata if you'd rather inspect or encode it yourself.
 

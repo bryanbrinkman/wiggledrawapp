@@ -55,6 +55,7 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
   canvas#c{box-shadow:3px 3px 0 var(--desk-deep)}
 }
 canvas#c{background:var(--paper);touch-action:none;max-width:100%;max-height:100%;border:2px solid var(--chrome-edge);box-shadow:4px 4px 0 var(--desk-deep);image-rendering:auto;cursor:crosshair}
+canvas#c.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),4px 4px 0 var(--desk-deep);cursor:not-allowed}
 .palette{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .swatch{width:26px;height:26px;border:2px solid var(--chrome-edge);cursor:pointer;padding:0;min-height:0;box-shadow:none}
 .swatch[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:-1px}
@@ -169,6 +170,7 @@ input[type=file]{display:none}
     <button class="primary" id="copyUri">Copy token URI</button>
     <button id="dlMeta">Download token JSON</button>
     <button id="showMeta">Show token JSON</button>
+    <button id="fit" title="Simplify strokes (and drop to 2 frames if needed) until the token URI is under 24 KB">Fit to 24 KB</button>
     <span class="spacer"></span>
     <span class="budget" id="budget" title="Transient Labs onchain art must stay under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
   </div>
@@ -211,37 +213,51 @@ function framePaths(st, key){
   return out;
 }
 // Midpoint quadratic smoothing: each vertex becomes a control point, so the wobble bends instead of kinks.
+// Emitted with relative coordinates and implicit repeated commands ("q1 2 3 4 5 6..."), which is the
+// most compact SVG path form. The same string feeds both the canvas preview (Path2D) and the export.
 function pathFrom(p, closed, smooth){
   const n = p.length;
-  const mid = (u, v) => Math.round((u[0] + v[0]) / 2) + ' ' + Math.round((u[1] + v[1]) / 2);
-  const pt = u => u[0] + ' ' + u[1];
-  if (n === 1) return 'M' + pt(p[0]) + 'l0 0';
-  if (!smooth || n < 3){
-    let d = 'M' + pt(p[0]);
-    for (let i = 1; i < n; i++) d += 'L' + pt(p[i]);
-    return d + (closed ? 'z' : '');
-  }
+  let cx = 0, cy = 0;
+  const num = v => (v < 0 ? '' : ' ') + v;
+  const M = u => { cx = u[0]; cy = u[1]; return 'M' + u[0] + ' ' + u[1]; };
+  const to = u => { const t = num(u[0] - cx) + num(u[1] - cy); cx = u[0]; cy = u[1]; return t; };
+  const mid = (u, v) => [Math.round((u[0] + v[0]) / 2), Math.round((u[1] + v[1]) / 2)];
+  // Both points of a relative q are measured from the segment start.
+  const q = (c, e) => { const t = num(c[0] - cx) + num(c[1] - cy) + num(e[0] - cx) + num(e[1] - cy); cx = e[0]; cy = e[1]; return t; };
   let d;
-  if (closed){
-    d = 'M' + mid(p[n - 1], p[0]);
-    for (let i = 0; i < n; i++) d += 'Q' + pt(p[i]) + ' ' + mid(p[i], p[(i + 1) % n]);
-    return d + 'z';
+  if (n === 1) d = M(p[0]) + 'l0 0';
+  else if (!smooth || n < 3){
+    d = M(p[0]) + 'l';
+    for (let i = 1; i < n; i++) d += to(p[i]);
+    if (closed) d += 'z';
+  } else if (closed){
+    d = M(mid(p[n - 1], p[0])) + 'q';
+    for (let i = 0; i < n; i++) d += q(p[i], mid(p[i], p[(i + 1) % n]));
+    d += 'z';
+  } else {
+    d = M(p[0]) + 'q';
+    for (let i = 1; i < n - 1; i++) d += q(p[i], mid(p[i], p[i + 1]));
+    d += 'l' + to(p[n - 1]);
   }
-  d = 'M' + pt(p[0]);
-  for (let i = 1; i < n - 1; i++) d += 'Q' + pt(p[i]) + ' ' + mid(p[i], p[i + 1]);
-  return d + 'L' + pt(p[n - 1]);
+  return d.replace(/([lq]) /g, '$1');
 }
 
 // ---------- geometry helpers ----------
-function simplify(pts, tol){
+// Douglas-Peucker: keep only the points that change the curve's shape by more than eps pixels.
+// A slow, straight-ish stroke collapses to a handful of points instead of one per pointer sample.
+const SIMPLIFY_EPS = 1.5;
+function simplify(pts, eps){
   if (pts.length < 3) return pts;
-  const out = [pts[0]];
+  const a = pts[0], b = pts[pts.length - 1];
+  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+  let maxD = -1, idx = 0;
   for (let i = 1; i < pts.length - 1; i++){
-    const p = out[out.length - 1], q = pts[i];
-    if (Math.hypot(q[0] - p[0], q[1] - p[1]) >= tol) out.push(q);
+    const p = pts[i];
+    const d = len ? Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) / len : Math.hypot(p[0] - a[0], p[1] - a[1]);
+    if (d > maxD){ maxD = d; idx = i; }
   }
-  out.push(pts[pts.length - 1]);
-  return out;
+  if (maxD <= eps) return [a, b];
+  return simplify(pts.slice(0, idx + 1), eps).slice(0, -1).concat(simplify(pts.slice(idx), eps));
 }
 function shapePts(tool, a, b){
   const [x0, y0] = a, [x1, y1] = b;
@@ -263,7 +279,8 @@ function shapePts(tool, a, b){
 const cv = $('c'), ctx = cv.getContext('2d');
 let frame = 0, lastTick = 0, cache = null, live = null, dpr = 1;
 const offs = [];
-function invalidate(){ cache = null; updateStat(); autosave(); }
+let fitBackup = null, fitting = false;
+function invalidate(){ cache = null; if (!fitting){ fitBackup = null; renderFitBtn(); } updateStat(); autosave(); }
 function buildCache(){
   cache = S.layers.map((L, li) => L.strokes.map((st, i) => ({ st, paths: framePaths(st, li * 100000 + i).map(d => new Path2D(d)) })));
 }
@@ -294,7 +311,16 @@ function draw(){
     if (live && li === S.active) paintStroke(oc, live, new Path2D(framePaths(live, li * 100000 + L.strokes.length)[f]));
     ctx.drawImage(o, 0, 0);
   });
+  if (flashOn){ ctx.fillStyle = 'rgba(255,60,40,.55)'; ctx.fillRect(0, 0, cv.width, cv.height); }
 }
+let flashOn = false;
+function flashCanvas(){
+  let k = 0;
+  const step = () => { flashOn = k % 2 === 0; draw(); if (++k < 6) setTimeout(step, 110); };
+  step();
+}
+const FULL_HINT = 'Undo a stroke, use Fit to 24 KB, or lower Frames';
+const FULL_MSG = 'Canvas is full — 24 KB reached. ' + FULL_HINT;
 function loop(t){
   if (S.playing && t - lastTick >= 1000 / S.fps){ lastTick = t; frame++; draw(); }
   requestAnimationFrame(loop);
@@ -320,13 +346,14 @@ function pos(e){
 }
 cv.addEventListener('pointerdown', e => {
   if (!layer().visible){ toast('This layer is hidden'); return; }
+  if (budgetBytes() > BUDGET){ e.preventDefault(); flashCanvas(); toast(FULL_MSG); return; }
   e.preventDefault(); cv.setPointerCapture(e.pointerId);
   drawing = true; start = pos(e); raw = [start];
   live = { color: S.color, size: S.size, erase: S.tool === 'eraser', pts: [start], closed: false, sharp: false };
   draw();
 });
 function applyMove(p){
-  if (S.tool === 'pen' || S.tool === 'eraser'){ raw.push(p); live.pts = simplify(raw, 3); }
+  if (S.tool === 'pen' || S.tool === 'eraser'){ raw.push(p); live.pts = simplify(raw, SIMPLIFY_EPS); }
   else { const s = shapePts(S.tool, start, p); live.pts = s.pts; live.closed = s.closed; live.sharp = !!s.sharp; }
 }
 cv.addEventListener('pointermove', e => { if (!drawing) return; applyMove(pos(e)); if (!S.playing) draw(); });
@@ -334,7 +361,9 @@ cv.addEventListener('pointerup', e => {
   if (!drawing) return; drawing = false;
   applyMove(pos(e));
   live.pts = live.pts.map(([x, y]) => [Math.round(x), Math.round(y)]);
-  const L = layer(); L.strokes.push(live); L.redo = []; live = null; invalidate(); draw();
+  const L = layer(); L.strokes.push(live); live = null;
+  if (budgetBytes() > BUDGET){ L.strokes.pop(); flashCanvas(); toast('That stroke would go over 24 KB. ' + FULL_HINT); return; }
+  L.redo = []; invalidate(); draw();
 });
 cv.addEventListener('pointercancel', () => { drawing = false; live = null; draw(); });
 
@@ -569,14 +598,41 @@ const tokenURI = meta => 'data:application/json;base64,' + b64(JSON.stringify(me
 async function buildToken(){ const svg = toSVG(); const hash = await sha256(svg); const meta = metadata(svg, hash); return { meta, uri: tokenURI(meta) }; }
 function fmtKB(n){ return (n / 1024).toFixed(1) + ' KB'; }
 // The hash is always 64 hex chars, so a placeholder gives the exact final size without async work.
+const budgetBytes = svg => tokenURI(metadata(svg || toSVG(), '0'.repeat(64))).length;
 function updateBudget(svg){
-  const n = tokenURI(metadata(svg, '0'.repeat(64))).length;
-  const el = $('budget'); el.dataset.over = n > BUDGET ? '1' : '0';
+  const n = budgetBytes(svg);
+  const el = $('budget'); el.dataset.over = n > BUDGET ? '1' : '0'; cv.classList.toggle('over', n > BUDGET);
   el.querySelector('b').style.setProperty('--p', Math.min(100, n / BUDGET * 100) + '%');
   $('budgetOut').textContent = fmtKB(n) + ' / 24 KB' + (n > BUDGET ? ' · over budget' : '');
   if ($('meta').classList.contains('open')) buildToken().then(t => { $('meta').value = JSON.stringify(t.meta, null, 2); });
 }
 function overBudget(n){ if (n > BUDGET){ toast('Token URI is ' + fmtKB(n) + ' — trim strokes, frames or layers to get under 24 KB'); return true; } return false; }
+function renderFitBtn(){ $('fit').textContent = fitBackup ? 'Undo fit' : 'Fit to 24 KB'; }
+function snapshot(){ return JSON.stringify({ frames: S.frames, layers: S.layers.map(L => L.strokes) }); }
+function restoreSnapshot(json){
+  const o = JSON.parse(json); S.frames = o.frames; S.layers.forEach((L, i) => { L.strokes = o.layers[i] || L.strokes; });
+  $('frames').value = S.frames; $('framesOut').value = S.frames;
+}
+// Re-simplify freehand strokes with a growing tolerance, then drop to 2 frames, until the token URI fits.
+async function fitToBudget(){
+  if (fitBackup){ fitting = true; restoreSnapshot(fitBackup); fitBackup = null; fitting = false; invalidate(); draw(); toast('Fit undone'); return; }
+  const before = budgetBytes();
+  if (before <= BUDGET){ toast('Already under 24 KB'); return; }
+  if (!(await ask('Simplify strokes until the token URI is under 24 KB? You can undo this until you draw again.'))) return;
+  const backup = snapshot();
+  const strokes = S.layers.flatMap(L => L.strokes.filter(st => !st.closed));
+  // Gentle simplification first, then one frame at a time, then heavier simplification as a last resort.
+  const steps = [2, 3, 4, 6, 'frame', 'frame', 'frame', 8, 12];
+  let n = before;
+  for (const step of steps){
+    if (step === 'frame'){ if (S.frames <= 2) continue; S.frames--; $('frames').value = S.frames; $('framesOut').value = S.frames; }
+    else strokes.forEach(st => { st.pts = simplify(st.pts, step); });
+    n = budgetBytes(); if (n <= BUDGET) break;
+  }
+  fitting = true; fitBackup = backup; invalidate(); fitting = false; renderFitBtn(); draw();
+  toast(n <= BUDGET ? 'Fits: ' + fmtKB(before) + ' → ' + fmtKB(n) : 'Still ' + fmtKB(n) + ' after simplifying — remove some strokes or layers');
+}
+$('fit').addEventListener('click', fitToBudget);
 $('tokName').addEventListener('input', () => { S.name = tokenName().replace(/[^\w\- ]+/g, '').slice(0, 40) || 'untitled'; updateStat(); autosave(); });
 $('tokDesc').addEventListener('input', () => { S.desc = $('tokDesc').value; updateStat(); autosave(); });
 $('showMeta').addEventListener('click', async e => {
