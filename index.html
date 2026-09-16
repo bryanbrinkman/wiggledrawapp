@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Wiggle Paint · SVG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --desk:#0f8a86; --desk-deep:#0b6d6a; --paper:#fbfaf3; --ink:#161616;
+  --chrome:#e6e2d4; --chrome-edge:#9c9684; --accent:#ff5c3a; --muted:#5c5a52;
+  --shadow:0 3px 0 var(--chrome-edge);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --desk:#0a4f4d; --desk-deep:#073836; --chrome:#2b2a26; --chrome-edge:#0e0e0c;
+    --ink:#f2efe6; --muted:#b5b1a5; --paper:#fbfaf3;
+  }
+}
+:root[data-theme="dark"]{
+  --desk:#0a4f4d; --desk-deep:#073836; --chrome:#2b2a26; --chrome-edge:#0e0e0c;
+  --ink:#f2efe6; --muted:#b5b1a5; --paper:#fbfaf3;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--desk);
+  background-image:radial-gradient(var(--desk-deep) 1px, transparent 1px);
+  background-size:8px 8px;
+  color:var(--ink);
+  font:15px/1.4 "Pixelify Sans", ui-monospace, "Courier New", monospace;
+  display:flex; flex-direction:column; min-height:100dvh;
+  -webkit-user-select:none; user-select:none;
+}
+header{display:flex;align-items:baseline;gap:10px;padding:10px 12px 6px}
+header h1{font-size:22px;font-weight:600;color:#fff;letter-spacing:.5px}
+header span{color:#cfe9e8;font-size:13px}
+.bar{background:var(--chrome);border:2px solid var(--chrome-edge);box-shadow:var(--shadow);margin:0 8px;padding:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+button,.tool{
+  font:inherit;font-size:14px;color:var(--ink);background:var(--chrome);
+  border:2px solid var(--chrome-edge);box-shadow:var(--shadow);
+  padding:6px 10px;cursor:pointer;min-height:36px;line-height:1;
+}
+button:active,.tool:active{transform:translateY(3px);box-shadow:none}
+button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.tool[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
+.tool svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.spacer{flex:1}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0}
+@media (max-width:719px){
+  .stage{flex:none;padding:6px 4px}
+  header{padding:8px 10px 4px} header span{display:none}
+  .bar{margin:0 4px;padding:4px}
+  canvas#c{box-shadow:3px 3px 0 var(--desk-deep)}
+}
+canvas#c{background:var(--paper);touch-action:none;max-width:100%;max-height:100%;border:2px solid var(--chrome-edge);box-shadow:4px 4px 0 var(--desk-deep);image-rendering:auto;cursor:crosshair}
+.palette{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.swatch{width:26px;height:26px;border:2px solid var(--chrome-edge);cursor:pointer;padding:0;min-height:0;box-shadow:none}
+.swatch[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:-1px}
+label.sl{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
+label.sl input[type=range]{width:90px;accent-color:var(--accent)}
+label.sl output{min-width:2ch;text-align:right}
+input[type=color]{width:34px;height:32px;border:2px solid var(--chrome-edge);background:var(--chrome);padding:0;cursor:pointer}
+.export{margin:0 8px 10px;display:flex;flex-direction:column;gap:6px}
+.export .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.export .primary{background:var(--accent);color:#fff;border-color:#8a2812;font-weight:600}
+.stat{font-size:13px;color:#dff3f2}
+textarea{width:100%;height:120px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge);padding:6px;resize:vertical;display:none;-webkit-user-select:text;user-select:text}
+textarea.open{display:block}
+.toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:8px 14px;border:2px solid var(--accent);opacity:0;pointer-events:none;transition:opacity .2s;font-size:14px;max-width:90vw}
+.toast.show{opacity:1}
+select{font:inherit;font-size:14px;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge);padding:6px;min-height:36px}
+.layers{display:flex;gap:4px;flex-wrap:wrap;align-items:center;flex:1}
+.layer{display:flex;align-items:center;gap:6px;padding:4px 8px;min-height:36px;font-size:14px}
+.layer[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
+.layer .eye{opacity:.9}
+.layer[data-hidden="1"]{opacity:.5;text-decoration:line-through}
+.small{padding:6px 8px;font-size:13px}
+input[type=file]{display:none}
+.veil{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:9}
+.veil.open{display:flex}
+.dlg{background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge);box-shadow:6px 6px 0 var(--desk-deep);padding:14px;max-width:360px;width:100%}
+.dlg p{margin-bottom:10px;font-size:15px}
+.dlg input{width:100%;font:inherit;font-size:15px;padding:8px;border:2px solid var(--chrome-edge);background:var(--paper);color:#161616;margin-bottom:10px;-webkit-user-select:text;user-select:text}
+.dlg .btns{display:flex;gap:6px;justify-content:flex-end}
+.dlg .ok{background:var(--accent);color:#fff;border-color:#8a2812}
+@media (min-width:720px){ label.sl input[type=range]{width:130px} }
+</style>
+</head>
+<body>
+<header><h1>Wiggle Paint</h1><span>draws SVG that wobbles · exports on-chain ready</span></header>
+
+<div class="bar" role="toolbar" aria-label="Tools">
+  <button class="tool" data-tool="pen" aria-pressed="true" title="Pencil"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>
+  <button class="tool" data-tool="line" aria-pressed="false" title="Line"><svg viewBox="0 0 24 24"><path d="M4 20L20 4"/></svg></button>
+  <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg></button>
+  <button class="tool" data-tool="ellipse" aria-pressed="false" title="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
+  <button class="tool" data-tool="eraser" aria-pressed="false" title="Eraser"><svg viewBox="0 0 24 24"><path d="M3 15l9-9 7 7-6 6H8z M8 19h12"/></svg></button>
+  <span class="spacer"></span>
+  <button id="undo" title="Undo">Undo</button>
+  <button id="redo" title="Redo">Redo</button>
+  <button id="clear" title="Clear this layer">Clear layer</button>
+</div>
+
+<div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas></div>
+
+<div class="bar" aria-label="Layers">
+  <div class="layers" id="layers"></div>
+  <button class="small" id="addLayer" title="Add layer">+ Layer</button>
+  <button class="small" id="toggleLayer" title="Show or hide layer">Hide</button>
+  <button class="small" id="layerUp" title="Move layer up">▲</button>
+  <button class="small" id="layerDown" title="Move layer down">▼</button>
+  <button class="small" id="renameLayer" title="Rename layer">Rename</button>
+  <button class="small" id="delLayer" title="Delete layer">Delete</button>
+</div>
+
+<div class="bar">
+  <div class="palette" id="palette"></div>
+  <input type="color" id="custom" value="#161616" title="Custom color">
+  <span class="spacer"></span>
+  <label class="sl">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
+</div>
+
+<div class="bar">
+  <label class="sl">Wiggle <input type="range" id="amp" min="0" max="8" step="0.5" value="2"><output id="ampOut">2</output></label>
+  <label class="sl">Speed <input type="range" id="fps" min="2" max="16" value="8"><output id="fpsOut">8</output></label>
+  <label class="sl">Frames <input type="range" id="frames" min="2" max="5" value="3"><output id="framesOut">3</output></label>
+  <button id="play" aria-pressed="true">Pause</button>
+  <span class="spacer"></span>
+  <label class="sl">Paper <input type="color" id="bg" value="#fbfaf3"></label>
+  <select id="dims" title="Canvas size">
+    <option value="512,512">512 × 512</option>
+    <option value="640,480">640 × 480</option>
+    <option value="480,640">480 × 640</option>
+    <option value="1000,1000">1000 × 1000</option>
+  </select>
+</div>
+
+<div class="export">
+  <div class="row">
+    <button id="newProj">New</button>
+    <button id="openProj">Open project</button>
+    <button id="saveProj">Save project</button>
+    <input type="file" id="fileIn" accept=".json,application/json">
+    <span class="spacer"></span>
+    <button class="primary" id="download">Download SVG</button>
+    <button id="copy">Copy SVG</button>
+    <button id="show">Show code</button>
+    <span class="stat" id="stat">0 strokes · 0 bytes</span>
+  </div>
+  <textarea id="code" readonly spellcheck="false" aria-label="SVG source"></textarea>
+</div>
+<div class="toast" id="toast"></div>
+<div class="veil" id="veil" role="dialog" aria-modal="true" aria-labelledby="dlgMsg"><div class="dlg">
+  <p id="dlgMsg"></p><input id="dlgIn" type="text" maxlength="40">
+  <div class="btns"><button id="dlgNo">Cancel</button><button class="ok" id="dlgOk">OK</button></div>
+</div></div>
+
+<script>
+(() => {
+'use strict';
+// ---------- state ----------
+const S = {
+  w: 512, h: 512, bg: '#fbfaf3', color: '#161616', size: 6, tool: 'pen',
+  amp: 2, fps: 8, frames: 3, playing: true, seed: (Math.random() * 1e9) | 0,
+  layers: [], active: 0, name: 'untitled',
+};
+const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00','#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
+const $ = id => document.getElementById(id);
+function newLayer(name){ return { name, visible: true, strokes: [], redo: [] }; }
+function layer(){ return S.layers[S.active]; }
+
+// ---------- deterministic jitter (same in preview and export) ----------
+function rand(seed){ // mulberry32
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function framePaths(st, key){
+  const out = [];
+  for (let f = 0; f < S.frames; f++){
+    const r = rand(S.seed + key * 7919 + f * 104729);
+    const a = S.amp;
+    const p = st.pts.map(([x, y]) => [Math.round(x + (a ? (r() * 2 - 1) * a : 0)), Math.round(y + (a ? (r() * 2 - 1) * a : 0))]);
+    out.push(pathFrom(p, st.closed, !st.sharp));
+  }
+  return out;
+}
+// Midpoint quadratic smoothing: each vertex becomes a control point, so the wobble bends instead of kinks.
+function pathFrom(p, closed, smooth){
+  const n = p.length;
+  const mid = (u, v) => Math.round((u[0] + v[0]) / 2) + ' ' + Math.round((u[1] + v[1]) / 2);
+  const pt = u => u[0] + ' ' + u[1];
+  if (n === 1) return 'M' + pt(p[0]) + 'l0 0';
+  if (!smooth || n < 3){
+    let d = 'M' + pt(p[0]);
+    for (let i = 1; i < n; i++) d += 'L' + pt(p[i]);
+    return d + (closed ? 'z' : '');
+  }
+  let d;
+  if (closed){
+    d = 'M' + mid(p[n - 1], p[0]);
+    for (let i = 0; i < n; i++) d += 'Q' + pt(p[i]) + ' ' + mid(p[i], p[(i + 1) % n]);
+    return d + 'z';
+  }
+  d = 'M' + pt(p[0]);
+  for (let i = 1; i < n - 1; i++) d += 'Q' + pt(p[i]) + ' ' + mid(p[i], p[i + 1]);
+  return d + 'L' + pt(p[n - 1]);
+}
+
+// ---------- geometry helpers ----------
+function simplify(pts, tol){
+  if (pts.length < 3) return pts;
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++){
+    const p = out[out.length - 1], q = pts[i];
+    if (Math.hypot(q[0] - p[0], q[1] - p[1]) >= tol) out.push(q);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+function shapePts(tool, a, b){
+  const [x0, y0] = a, [x1, y1] = b;
+  if (tool === 'line'){
+    const n = Math.max(2, Math.min(24, Math.round(Math.hypot(x1 - x0, y1 - y0) / 24)));
+    const pts = []; for (let i = 0; i <= n; i++){ const t = i / n; pts.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]); }
+    return { pts, closed: false, sharp: false };
+  }
+  if (tool === 'rect') return { pts: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], closed: true, sharp: true };
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = Math.abs(x1 - x0) / 2, ry = Math.abs(y1 - y0) / 2;
+  const n = Math.max(12, Math.min(48, Math.round((rx + ry) / 6)));
+  const pts = [];
+  for (let i = 0; i < n; i++){ const t = i / n * Math.PI * 2; pts.push([cx + Math.cos(t) * rx, cy + Math.sin(t) * ry]); }
+  return { pts, closed: true, sharp: false };
+}
+
+// ---------- canvas preview ----------
+// Each layer renders to its own offscreen canvas so the eraser only cuts that layer (matches the SVG mask export).
+const cv = $('c'), ctx = cv.getContext('2d');
+let frame = 0, lastTick = 0, cache = null, live = null, dpr = 1;
+const offs = [];
+function invalidate(){ cache = null; updateStat(); autosave(); }
+function buildCache(){
+  cache = S.layers.map((L, li) => L.strokes.map((st, i) => ({ st, paths: framePaths(st, li * 100000 + i).map(d => new Path2D(d)) })));
+}
+function paintStroke(c, st, path){
+  c.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
+  c.strokeStyle = st.erase ? '#000' : st.color;
+  c.lineWidth = st.size; c.lineCap = 'round'; c.lineJoin = 'round';
+  c.stroke(path);
+}
+function offCanvas(i){
+  if (!offs[i]) offs[i] = document.createElement('canvas');
+  const o = offs[i];
+  if (o.width !== cv.width || o.height !== cv.height){ o.width = cv.width; o.height = cv.height; }
+  return o;
+}
+function draw(){
+  if (!cache) buildCache();
+  const f = frame % S.frames;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = S.bg; ctx.fillRect(0, 0, cv.width, cv.height);
+  S.layers.forEach((L, li) => {
+    if (!L.visible) return;
+    const o = offCanvas(li), oc = o.getContext('2d');
+    oc.setTransform(1, 0, 0, 1, 0, 0); oc.globalCompositeOperation = 'source-over'; oc.clearRect(0, 0, o.width, o.height);
+    oc.scale(dpr, dpr);
+    for (const e of cache[li]) paintStroke(oc, e.st, e.paths[f]);
+    if (live && li === S.active) paintStroke(oc, live, new Path2D(framePaths(live, li * 100000 + L.strokes.length)[f]));
+    ctx.drawImage(o, 0, 0);
+  });
+}
+function loop(t){
+  if (S.playing && t - lastTick >= 1000 / S.fps){ lastTick = t; frame++; draw(); }
+  requestAnimationFrame(loop);
+}
+function fitCanvas(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = S.w * dpr; cv.height = S.h * dpr;
+  const stage = cv.parentElement, mobile = window.innerWidth < 720;
+  // On phones the canvas takes the full width and up to ~70% of the screen height; the page scrolls for the controls.
+  const maxW = mobile ? window.innerWidth - 12 : stage.clientWidth - 16;
+  const maxH = mobile ? window.innerHeight * 0.7 : stage.clientHeight - 16;
+  const sc = Math.min(maxW / S.w, maxH / S.h, 1.5);
+  cv.style.width = Math.floor(S.w * sc) + 'px'; cv.style.height = Math.floor(S.h * sc) + 'px';
+  draw();
+}
+window.addEventListener('resize', fitCanvas);
+
+// ---------- input ----------
+let drawing = false, start = null, raw = [];
+function pos(e){
+  const r = cv.getBoundingClientRect();
+  return [ (e.clientX - r.left) * S.w / r.width, (e.clientY - r.top) * S.h / r.height ];
+}
+cv.addEventListener('pointerdown', e => {
+  if (!layer().visible){ toast('This layer is hidden'); return; }
+  e.preventDefault(); cv.setPointerCapture(e.pointerId);
+  drawing = true; start = pos(e); raw = [start];
+  live = { color: S.color, size: S.size, erase: S.tool === 'eraser', pts: [start], closed: false, sharp: false };
+  draw();
+});
+function applyMove(p){
+  if (S.tool === 'pen' || S.tool === 'eraser'){ raw.push(p); live.pts = simplify(raw, 3); }
+  else { const s = shapePts(S.tool, start, p); live.pts = s.pts; live.closed = s.closed; live.sharp = !!s.sharp; }
+}
+cv.addEventListener('pointermove', e => { if (!drawing) return; applyMove(pos(e)); if (!S.playing) draw(); });
+cv.addEventListener('pointerup', e => {
+  if (!drawing) return; drawing = false;
+  applyMove(pos(e));
+  live.pts = live.pts.map(([x, y]) => [Math.round(x), Math.round(y)]);
+  const L = layer(); L.strokes.push(live); L.redo = []; live = null; invalidate(); draw();
+});
+cv.addEventListener('pointercancel', () => { drawing = false; live = null; draw(); });
+
+// ---------- in-page dialogs (styled to match the app; also work where native confirm/prompt are blocked) ----------
+function dialog(msg, withInput, def){
+  return new Promise(res => {
+    const v = $('veil'), inp = $('dlgIn');
+    $('dlgMsg').textContent = msg; inp.style.display = withInput ? 'block' : 'none'; inp.value = def || '';
+    v.classList.add('open');
+    const done = ok => { v.classList.remove('open'); $('dlgOk').onclick = $('dlgNo').onclick = null; inp.onkeydown = null; res(ok ? (withInput ? inp.value : true) : (withInput ? null : false)); };
+    $('dlgOk').onclick = () => done(true); $('dlgNo').onclick = () => done(false);
+    v.onclick = e => { if (e.target === v) done(false); };
+    inp.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+    setTimeout(() => (withInput ? inp : $('dlgOk')).focus(), 0);
+  });
+}
+const ask = msg => dialog(msg, false);
+const askText = (msg, def) => dialog(msg, true, def);
+
+// ---------- tool controls ----------
+document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tool').forEach(x => x.setAttribute('aria-pressed', 'false'));
+  b.setAttribute('aria-pressed', 'true'); S.tool = b.dataset.tool;
+}));
+const pal = $('palette');
+PALETTE.forEach(c => {
+  const b = document.createElement('button'); b.className = 'swatch'; b.style.background = c; b.title = c;
+  b.setAttribute('aria-pressed', c === S.color ? 'true' : 'false');
+  b.addEventListener('click', () => setColor(c));
+  pal.appendChild(b);
+});
+function setColor(c){
+  S.color = c; $('custom').value = c;
+  pal.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', s.title === c ? 'true' : 'false'));
+}
+$('custom').addEventListener('input', e => setColor(e.target.value));
+function bindRange(id, key, out, after){
+  $(id).addEventListener('input', e => { S[key] = +e.target.value; $(out).value = e.target.value; if (after) after(); });
+}
+bindRange('size', 'size', 'sizeOut');
+bindRange('amp', 'amp', 'ampOut', () => { invalidate(); draw(); });
+bindRange('fps', 'fps', 'fpsOut', autosave);
+bindRange('frames', 'frames', 'framesOut', () => { invalidate(); draw(); });
+$('bg').addEventListener('input', e => { S.bg = e.target.value; invalidate(); draw(); });
+$('play').addEventListener('click', e => {
+  S.playing = !S.playing; e.target.textContent = S.playing ? 'Pause' : 'Play';
+  e.target.setAttribute('aria-pressed', String(S.playing)); draw();
+});
+function totalStrokes(){ return S.layers.reduce((n, L) => n + L.strokes.length, 0); }
+$('dims').addEventListener('change', async e => {
+  const [w, h] = e.target.value.split(',').map(Number);
+  if (totalStrokes() && !(await ask('Changing size clears all layers. Continue?'))) { e.target.value = S.w + ',' + S.h; return; }
+  S.w = w; S.h = h; S.layers.forEach(L => { L.strokes = []; L.redo = []; }); invalidate(); fitCanvas();
+});
+$('undo').addEventListener('click', () => { const L = layer(); const s = L.strokes.pop(); if (s) L.redo.push(s); invalidate(); draw(); });
+$('redo').addEventListener('click', () => { const L = layer(); const s = L.redo.pop(); if (s) L.strokes.push(s); invalidate(); draw(); });
+$('clear').addEventListener('click', async () => { const L = layer(); if (!L.strokes.length || await ask('Clear layer "' + L.name + '"?')) { L.strokes = []; L.redo = []; invalidate(); draw(); } });
+window.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); (e.shiftKey ? $('redo') : $('undo')).click(); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); $('saveProj').click(); }
+});
+if (matchMedia('(prefers-reduced-motion: reduce)').matches){ S.playing = false; $('play').textContent = 'Play'; $('play').setAttribute('aria-pressed', 'false'); }
+
+// ---------- layers ----------
+function renderLayers(){
+  const box = $('layers'); box.innerHTML = '';
+  // Show top layer first, like a layers panel.
+  for (let i = S.layers.length - 1; i >= 0; i--){
+    const L = S.layers[i];
+    const b = document.createElement('button'); b.className = 'layer';
+    b.setAttribute('aria-pressed', i === S.active ? 'true' : 'false');
+    b.dataset.hidden = L.visible ? '0' : '1';
+    b.innerHTML = `<span class="eye">${L.visible ? '●' : '○'}</span><span></span>`;
+    b.lastChild.textContent = L.name;
+    b.addEventListener('click', () => { S.active = i; renderLayers(); });
+    box.appendChild(b);
+  }
+  $('toggleLayer').textContent = layer().visible ? 'Hide' : 'Show';
+  $('delLayer').disabled = S.layers.length < 2;
+  $('layerUp').disabled = S.active >= S.layers.length - 1;
+  $('layerDown').disabled = S.active <= 0;
+}
+$('addLayer').addEventListener('click', () => {
+  S.layers.splice(S.active + 1, 0, newLayer('Layer ' + (S.layers.length + 1))); S.active++; renderLayers(); invalidate(); draw();
+});
+$('toggleLayer').addEventListener('click', () => { layer().visible = !layer().visible; renderLayers(); invalidate(); draw(); });
+$('layerUp').addEventListener('click', () => { const i = S.active; if (i < S.layers.length - 1){ [S.layers[i], S.layers[i + 1]] = [S.layers[i + 1], S.layers[i]]; S.active++; renderLayers(); invalidate(); draw(); } });
+$('layerDown').addEventListener('click', () => { const i = S.active; if (i > 0){ [S.layers[i], S.layers[i - 1]] = [S.layers[i - 1], S.layers[i]]; S.active--; renderLayers(); invalidate(); draw(); } });
+$('renameLayer').addEventListener('click', async () => { const n = await askText('Layer name', layer().name); if (n && n.trim()){ layer().name = n.trim().slice(0, 24); renderLayers(); autosave(); } });
+$('delLayer').addEventListener('click', async () => {
+  if (S.layers.length < 2) return;
+  const L = layer();
+  if (L.strokes.length && !(await ask('Delete layer "' + L.name + '" and its ' + L.strokes.length + ' strokes?'))) return;
+  S.layers.splice(S.active, 1); S.active = Math.max(0, S.active - 1); renderLayers(); invalidate(); draw();
+});
+
+// ---------- project save / open ----------
+function projectJSON(){
+  return JSON.stringify({ app: 'wiggle-paint', v: 2, name: S.name, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
+    layers: S.layers.map(L => ({ name: L.name, visible: L.visible, strokes: L.strokes })) });
+}
+function loadProject(obj){
+  if (!obj || obj.app !== 'wiggle-paint' || !Array.isArray(obj.layers)) throw new Error('Not a Wiggle Paint project');
+  S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled';
+  S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
+  S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [] }));
+  if (!S.layers.length) S.layers = [newLayer('Layer 1')];
+  S.active = Math.min(S.layers.length - 1, obj.active ?? S.layers.length - 1);
+  syncControls();
+}
+function syncControls(){
+  $('amp').value = S.amp; $('ampOut').value = S.amp; $('fps').value = S.fps; $('fpsOut').value = S.fps;
+  $('frames').value = S.frames; $('framesOut').value = S.frames; $('bg').value = S.bg;
+  const d = S.w + ',' + S.h; if ([...$('dims').options].some(o => o.value === d)) $('dims').value = d;
+  renderLayers(); cache = null; fitCanvas(); updateStat();
+}
+function freshProject(){
+  S.layers = [newLayer('Layer 1')]; S.active = 0; S.name = 'untitled'; S.seed = (Math.random() * 1e9) | 0;
+  syncControls(); autosave();
+}
+// Autosave to this browser so a refresh doesn't lose work (per-viewer convenience only).
+let autoT = null;
+function autosave(){ clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem('wiggle-paint:project', projectJSON()); } catch {} }, 400); }
+function restore(){
+  try { const raw = localStorage.getItem('wiggle-paint:project'); if (raw){ loadProject(JSON.parse(raw)); return true; } } catch {}
+  return false;
+}
+$('newProj').addEventListener('click', async () => { if (!totalStrokes() || await ask('Start a new project? Unsaved work is lost.')) freshProject(); });
+$('saveProj').addEventListener('click', async () => {
+  let name = await askText('Project name', S.name); if (name === null) return;
+  S.name = (name.trim() || 'untitled').replace(/[^\w\- ]+/g, '').slice(0, 40) || 'untitled';
+  await saveFile(S.name + '.wiggle.json', projectJSON(), 'Project saved');
+});
+$('openProj').addEventListener('click', () => $('fileIn').click());
+$('fileIn').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { try { loadProject(JSON.parse(rd.result)); autosave(); toast('Opened ' + S.name); } catch (err) { toast(err.message || 'Could not open that file'); } };
+  rd.readAsText(f); e.target.value = '';
+});
+
+// ---------- SVG export ----------
+// Self-contained SMIL animation: each path cycles its jittered frames. Eraser strokes become a per-layer mask.
+function toSVG(){
+  const dur = (S.frames / S.fps).toFixed(3);
+  const anim = ps => (S.amp > 0 && S.frames > 1) ? `<animate attributeName="d" values="${ps.join(';')}" dur="${dur}s" calcMode="discrete" repeatCount="indefinite"/>` : '';
+  let defs = '', body = '';
+  S.layers.forEach((L, li) => {
+    if (!L.visible || !L.strokes.length) return;
+    const paints = [], erases = [];
+    L.strokes.forEach((st, i) => {
+      const ps = framePaths(st, li * 100000 + i);
+      const el = `<path${st.erase ? '' : ` stroke="${st.color}"`} stroke-width="${st.size}" d="${ps[0]}">${anim(ps)}</path>`;
+      (st.erase ? erases : paints).push(el);
+    });
+    if (!paints.length) return;
+    let g = `<g id="L${li + 1}"`;
+    if (erases.length){
+      defs += `<mask id="m${li + 1}"><rect width="${S.w}" height="${S.h}" fill="#fff"/><g stroke="#000">${erases.join('')}</g></mask>`;
+      g += ` mask="url(#m${li + 1})"`;
+    }
+    body += g + '>' + paints.join('') + '</g>';
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S.w} ${S.h}" width="${S.w}" height="${S.h}" fill="none" stroke-linecap="round" stroke-linejoin="round">`
+    + (defs ? `<defs>${defs}</defs>` : '')
+    + `<rect width="${S.w}" height="${S.h}" fill="${S.bg}"/>${body}</svg>`;
+}
+function updateStat(){
+  const svg = toSVG();
+  const bytes = new TextEncoder().encode(svg).length, n = totalStrokes();
+  $('stat').textContent = `${n} stroke${n === 1 ? '' : 's'} · ${S.layers.length} layer${S.layers.length === 1 ? '' : 's'} · ${bytes >= 1024 ? (bytes / 1024).toFixed(1) + ' KB' : bytes + ' bytes'}`;
+  if ($('code').classList.contains('open')) $('code').value = svg;
+}
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2200); }
+
+$('show').addEventListener('click', e => {
+  const c = $('code'); c.classList.toggle('open'); c.value = toSVG();
+  e.target.textContent = c.classList.contains('open') ? 'Hide code' : 'Show code';
+});
+$('copy').addEventListener('click', async () => {
+  const svg = toSVG();
+  try { await navigator.clipboard.writeText(svg); toast('SVG copied'); }
+  catch { $('code').classList.add('open'); $('code').value = svg; $('code').select(); toast('Select and copy from the box below'); }
+});
+
+function saveFile(filename, data, okMsg){
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], { type: filename.endsWith('.svg') ? 'image/svg+xml' : 'application/json' }));
+    a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast(okMsg);
+  } catch { toast('Could not save — try Copy SVG or Show code'); }
+}
+$('download').addEventListener('click', () => {
+  if (!totalStrokes()) { toast('Draw something first'); return; }
+  saveFile((S.name || 'wiggle') + '.svg', toSVG(), 'SVG saved');
+});
+
+// ---------- boot ----------
+if (!restore()) freshProject();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
