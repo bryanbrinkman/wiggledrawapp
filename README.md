@@ -8,6 +8,7 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Undo / redo, keyboard shortcuts (`⌘/Ctrl+Z`, `⇧⌘/Ctrl+Z`, `⌘/Ctrl+S`)
 - Save / open projects as JSON, autosave to the browser
 - Download or copy the finished SVG
+- Mint‑ready export for [Transient Labs onchain art](https://docs.transientlabs.xyz/integrations/onchain-art): one‑click token URI with a live 24 KB budget meter
 
 The whole app is a single file: [`index.html`](index.html). No build step, no dependencies.
 
@@ -36,6 +37,17 @@ npm i -g vercel
 vercel        # preview deployment
 vercel --prod # production deployment
 ```
+
+## Minting onchain with Transient Labs
+
+The **Mint onchain** section at the bottom builds a token URI that follows the [Transient Labs onchain art guide](https://docs.transientlabs.xyz/integrations/onchain-art) and [metadata structure](https://docs.transientlabs.xyz/integrations/metadata-structure):
+
+- The SVG is embedded as `data:image/svg+xml;base64,…` in the `image` field.
+- `name`, `description`, `attributes` (wiggle, speed, frames, layers, strokes), `media` (size, dimensions, mime type) and `image_sha256` are filled in for you.
+- The whole metadata object is wrapped as `data:application/json;base64,…` — that string is the token URI.
+- The meter shows the token URI's size against the 24 KB limit and turns red when you're over. Fewer strokes, frames, or layers bring it down.
+
+**Copy token URI** puts the finished string on your clipboard to paste into the mint form. **Download token JSON** saves the unwrapped metadata if you'd rather inspect or encode it yourself.
 
 ## How the export works
 

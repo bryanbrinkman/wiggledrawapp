@@ -78,6 +78,16 @@ select{font:inherit;font-size:14px;background:var(--chrome);color:var(--ink);bor
 .layer[data-hidden="1"]{opacity:.5;text-decoration:line-through}
 .small{padding:6px 8px;font-size:13px}
 input[type=file]{display:none}
+.field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);flex:1;min-width:140px}
+.field input[type=text]{flex:1;min-width:0;font:inherit;font-size:14px;padding:6px 8px;min-height:36px;border:2px solid var(--chrome-edge);background:var(--paper);color:#161616;-webkit-user-select:text;user-select:text}
+.budget{font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.budget i{display:inline-block;width:80px;height:10px;border:2px solid var(--chrome-edge);background:var(--paper);position:relative}
+.budget i b{position:absolute;inset:0;width:var(--p,0%);background:#2fb36a}
+.budget[data-over="1"] i b{background:var(--accent)}
+.budget[data-over="1"]{color:var(--accent);font-weight:600}
+.export h2{font-size:14px;font-weight:600;color:#dff3f2;margin-top:4px}
+.export .hint{font-size:12px;color:#cfe9e8}
+.export .hint a{color:#fff}
 .veil{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:9}
 .veil.open{display:flex}
 .dlg{background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge);box-shadow:6px 6px 0 var(--desk-deep);padding:14px;max-width:360px;width:100%}
@@ -150,6 +160,20 @@ input[type=file]{display:none}
     <span class="stat" id="stat">0 strokes · 0 bytes</span>
   </div>
   <textarea id="code" readonly spellcheck="false" aria-label="SVG source"></textarea>
+  <h2>Mint onchain (Transient Labs)</h2>
+  <div class="row">
+    <label class="field">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
+    <label class="field">Description <input type="text" id="tokDesc" maxlength="500" placeholder="Drawn with Wiggle Paint"></label>
+  </div>
+  <div class="row">
+    <button class="primary" id="copyUri">Copy token URI</button>
+    <button id="dlMeta">Download token JSON</button>
+    <button id="showMeta">Show token JSON</button>
+    <span class="spacer"></span>
+    <span class="budget" id="budget" title="Transient Labs onchain art must stay under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
+  </div>
+  <p class="hint">Token URI is <code>data:application/json;base64,…</code> with the SVG embedded as a base64 data URI, following the <a href="https://docs.transientlabs.xyz/integrations/onchain-art" target="_blank" rel="noopener">Transient Labs onchain art spec</a>. Paste it as the token URI when minting.</p>
+  <textarea id="meta" readonly spellcheck="false" aria-label="Token metadata JSON"></textarea>
 </div>
 <div class="toast" id="toast"></div>
 <div class="veil" id="veil" role="dialog" aria-modal="true" aria-labelledby="dlgMsg"><div class="dlg">
@@ -164,7 +188,7 @@ input[type=file]{display:none}
 const S = {
   w: 512, h: 512, bg: '#fbfaf3', color: '#161616', size: 6, tool: 'pen',
   amp: 2, fps: 8, frames: 3, playing: true, seed: (Math.random() * 1e9) | 0,
-  layers: [], active: 0, name: 'untitled',
+  layers: [], active: 0, name: 'untitled', desc: '',
 };
 const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00','#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
 const $ = id => document.getElementById(id);
@@ -369,6 +393,7 @@ $('undo').addEventListener('click', () => { const L = layer(); const s = L.strok
 $('redo').addEventListener('click', () => { const L = layer(); const s = L.redo.pop(); if (s) L.strokes.push(s); invalidate(); draw(); });
 $('clear').addEventListener('click', async () => { const L = layer(); if (!L.strokes.length || await ask('Clear layer "' + L.name + '"?')) { L.strokes = []; L.redo = []; invalidate(); draw(); } });
 window.addEventListener('keydown', e => {
+  if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range') return;
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); (e.shiftKey ? $('redo') : $('undo')).click(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); $('saveProj').click(); }
 });
@@ -409,12 +434,12 @@ $('delLayer').addEventListener('click', async () => {
 
 // ---------- project save / open ----------
 function projectJSON(){
-  return JSON.stringify({ app: 'wiggle-paint', v: 2, name: S.name, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
+  return JSON.stringify({ app: 'wiggle-paint', v: 2, name: S.name, desc: S.desc, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
     layers: S.layers.map(L => ({ name: L.name, visible: L.visible, strokes: L.strokes })) });
 }
 function loadProject(obj){
   if (!obj || obj.app !== 'wiggle-paint' || !Array.isArray(obj.layers)) throw new Error('Not a Wiggle Paint project');
-  S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled';
+  S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled'; S.desc = typeof obj.desc === 'string' ? obj.desc : '';
   S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
   S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [] }));
   if (!S.layers.length) S.layers = [newLayer('Layer 1')];
@@ -424,11 +449,12 @@ function loadProject(obj){
 function syncControls(){
   $('amp').value = S.amp; $('ampOut').value = S.amp; $('fps').value = S.fps; $('fpsOut').value = S.fps;
   $('frames').value = S.frames; $('framesOut').value = S.frames; $('bg').value = S.bg;
+  $('tokName').value = S.name === 'untitled' ? '' : S.name; $('tokDesc').value = S.desc;
   const d = S.w + ',' + S.h; if ([...$('dims').options].some(o => o.value === d)) $('dims').value = d;
   renderLayers(); cache = null; fitCanvas(); updateStat();
 }
 function freshProject(){
-  S.layers = [newLayer('Layer 1')]; S.active = 0; S.name = 'untitled'; S.seed = (Math.random() * 1e9) | 0;
+  S.layers = [newLayer('Layer 1')]; S.active = 0; S.name = 'untitled'; S.desc = ''; S.seed = (Math.random() * 1e9) | 0;
   syncControls(); autosave();
 }
 // Autosave to this browser so a refresh doesn't lose work (per-viewer convenience only).
@@ -442,6 +468,7 @@ $('newProj').addEventListener('click', async () => { if (!totalStrokes() || awai
 $('saveProj').addEventListener('click', async () => {
   let name = await askText('Project name', S.name); if (name === null) return;
   S.name = (name.trim() || 'untitled').replace(/[^\w\- ]+/g, '').slice(0, 40) || 'untitled';
+  $('tokName').value = S.name === 'untitled' ? '' : S.name;
   await saveFile(S.name + '.wiggle.json', projectJSON(), 'Project saved');
 });
 $('openProj').addEventListener('click', () => $('fileIn').click());
@@ -483,6 +510,7 @@ function updateStat(){
   const bytes = new TextEncoder().encode(svg).length, n = totalStrokes();
   $('stat').textContent = `${n} stroke${n === 1 ? '' : 's'} · ${S.layers.length} layer${S.layers.length === 1 ? '' : 's'} · ${bytes >= 1024 ? (bytes / 1024).toFixed(1) + ' KB' : bytes + ' bytes'}`;
   if ($('code').classList.contains('open')) $('code').value = svg;
+  updateBudget(svg);
 }
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2200); }
 
@@ -506,6 +534,68 @@ function saveFile(filename, data, okMsg){
 $('download').addEventListener('click', () => {
   if (!totalStrokes()) { toast('Draw something first'); return; }
   saveFile((S.name || 'wiggle') + '.svg', toSVG(), 'SVG saved');
+});
+
+// ---------- onchain export (Transient Labs) ----------
+// Spec: metadata follows the Transient Labs structure, every URI is a base64 data URI,
+// and the whole token URI must stay under 24 KB. https://docs.transientlabs.xyz/integrations/onchain-art
+const BUDGET = 24 * 1024;
+const utf8 = str => new TextEncoder().encode(str);
+function b64(str){ let bin = ''; utf8(str).forEach(b => bin += String.fromCharCode(b)); return btoa(bin); }
+async function sha256(str){
+  if (!(window.crypto && window.crypto.subtle)) return null;
+  const h = await crypto.subtle.digest('SHA-256', utf8(str));
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function tokenName(){ return ($('tokName').value.trim() || S.name || 'untitled').slice(0, 80); }
+function metadata(svg, hash){
+  const bytes = utf8(svg).length;
+  return {
+    name: tokenName(),
+    description: $('tokDesc').value.trim() || 'Drawn with Wiggle Paint',
+    image: 'data:image/svg+xml;base64,' + b64(svg),
+    ...(hash ? { image_sha256: hash } : {}),
+    media: { size: bytes, dimensions: S.w + 'x' + S.h, mimeType: 'image/svg+xml' },
+    attributes: [
+      { trait_type: 'Wiggle', value: S.amp },
+      { trait_type: 'Speed', value: S.fps },
+      { trait_type: 'Frames', value: S.frames },
+      { trait_type: 'Layers', value: S.layers.filter(L => L.visible && L.strokes.length).length },
+      { trait_type: 'Strokes', value: totalStrokes() },
+    ],
+  };
+}
+const tokenURI = meta => 'data:application/json;base64,' + b64(JSON.stringify(meta));
+async function buildToken(){ const svg = toSVG(); const hash = await sha256(svg); const meta = metadata(svg, hash); return { meta, uri: tokenURI(meta) }; }
+function fmtKB(n){ return (n / 1024).toFixed(1) + ' KB'; }
+// The hash is always 64 hex chars, so a placeholder gives the exact final size without async work.
+function updateBudget(svg){
+  const n = tokenURI(metadata(svg, '0'.repeat(64))).length;
+  const el = $('budget'); el.dataset.over = n > BUDGET ? '1' : '0';
+  el.querySelector('b').style.setProperty('--p', Math.min(100, n / BUDGET * 100) + '%');
+  $('budgetOut').textContent = fmtKB(n) + ' / 24 KB' + (n > BUDGET ? ' · over budget' : '');
+  if ($('meta').classList.contains('open')) buildToken().then(t => { $('meta').value = JSON.stringify(t.meta, null, 2); });
+}
+function overBudget(n){ if (n > BUDGET){ toast('Token URI is ' + fmtKB(n) + ' — trim strokes, frames or layers to get under 24 KB'); return true; } return false; }
+$('tokName').addEventListener('input', () => { S.name = tokenName().replace(/[^\w\- ]+/g, '').slice(0, 40) || 'untitled'; updateStat(); autosave(); });
+$('tokDesc').addEventListener('input', () => { S.desc = $('tokDesc').value; updateStat(); autosave(); });
+$('showMeta').addEventListener('click', async e => {
+  const m = $('meta'); m.classList.toggle('open');
+  e.target.textContent = m.classList.contains('open') ? 'Hide token JSON' : 'Show token JSON';
+  if (m.classList.contains('open')) m.value = JSON.stringify((await buildToken()).meta, null, 2);
+});
+$('copyUri').addEventListener('click', async () => {
+  if (!totalStrokes()) { toast('Draw something first'); return; }
+  const { uri } = await buildToken();
+  if (overBudget(uri.length)) return;
+  try { await navigator.clipboard.writeText(uri); toast('Token URI copied (' + fmtKB(uri.length) + ')'); }
+  catch { $('meta').classList.add('open'); $('meta').value = uri; $('meta').select(); toast('Select and copy from the box below'); }
+});
+$('dlMeta').addEventListener('click', async () => {
+  if (!totalStrokes()) { toast('Draw something first'); return; }
+  const { meta, uri } = await buildToken();
+  overBudget(uri.length);
+  saveFile((S.name || 'wiggle') + '.token.json', JSON.stringify(meta, null, 2), 'Token JSON saved');
 });
 
 // ---------- boot ----------
