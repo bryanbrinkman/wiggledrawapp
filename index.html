@@ -34,6 +34,8 @@ body{
   -webkit-user-select:none; user-select:none;
 }
 header{display:flex;align-items:baseline;gap:10px;padding:10px 12px 6px}
+header .by{margin-left:auto;font-size:13px;color:#cfe9e8;text-decoration:none;border-bottom:2px solid transparent}
+header .by:hover,header .by:focus-visible{color:#fff;border-bottom-color:var(--accent);outline:none}
 header h1{font-size:22px;font-weight:600;color:#fff;letter-spacing:.5px}
 header span{color:#cfe9e8;font-size:13px}
 .bar{background:var(--chrome);border:2px solid var(--chrome-edge);box-shadow:var(--shadow);margin:0 8px;padding:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -50,7 +52,7 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
 .stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0}
 @media (max-width:719px){
   .stage{flex:none;padding:6px 4px}
-  header{padding:8px 10px 4px} header span{display:none}
+  header{padding:8px 10px 4px} header span:not(.by){display:none}
   .bar{margin:0 4px;padding:4px}
   canvas#c{box-shadow:3px 3px 0 var(--desk-deep)}
 }
@@ -101,7 +103,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<header><h1>ChainPainter</h1><span>draws SVG that wobbles · exports on-chain ready</span></header>
+<header><h1>ChainPainter</h1><span>draws SVG that wobbles · exports on-chain ready</span><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a></header>
 
 <div class="bar" role="toolbar" aria-label="Tools">
   <button class="tool" data-tool="pen" aria-pressed="true" title="Pencil"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>
