@@ -1,4 +1,4 @@
-# Wiggle Paint
+# ChainPainter
 
 A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jittered across a few frames and exported as a self‑contained, SMIL‑animated SVG — no JavaScript in the output, so it's ready for on‑chain or anywhere plain SVG renders.
 

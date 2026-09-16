@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Wiggle Paint · SVG</title>
+<title>ChainPainter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -99,7 +99,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<header><h1>Wiggle Paint</h1><span>draws SVG that wobbles · exports on-chain ready</span></header>
+<header><h1>ChainPainter</h1><span>draws SVG that wobbles · exports on-chain ready</span></header>
 
 <div class="bar" role="toolbar" aria-label="Tools">
   <button class="tool" data-tool="pen" aria-pressed="true" title="Pencil"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>
@@ -163,7 +163,7 @@ input[type=file]{display:none}
   <h2>Mint onchain (Transient Labs)</h2>
   <div class="row">
     <label class="field">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
-    <label class="field">Description <input type="text" id="tokDesc" maxlength="500" placeholder="Drawn with Wiggle Paint"></label>
+    <label class="field">Description <input type="text" id="tokDesc" maxlength="500" placeholder="Drawn with ChainPainter"></label>
   </div>
   <div class="row">
     <button class="primary" id="copyUri">Copy token URI</button>
@@ -434,11 +434,11 @@ $('delLayer').addEventListener('click', async () => {
 
 // ---------- project save / open ----------
 function projectJSON(){
-  return JSON.stringify({ app: 'wiggle-paint', v: 2, name: S.name, desc: S.desc, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
+  return JSON.stringify({ app: 'chainpainter', v: 2, name: S.name, desc: S.desc, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
     layers: S.layers.map(L => ({ name: L.name, visible: L.visible, strokes: L.strokes })) });
 }
 function loadProject(obj){
-  if (!obj || obj.app !== 'wiggle-paint' || !Array.isArray(obj.layers)) throw new Error('Not a Wiggle Paint project');
+  if (!obj || !['chainpainter', 'wiggle-paint'].includes(obj.app) || !Array.isArray(obj.layers)) throw new Error('Not a ChainPainter project');
   S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled'; S.desc = typeof obj.desc === 'string' ? obj.desc : '';
   S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
   S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [] }));
@@ -459,9 +459,9 @@ function freshProject(){
 }
 // Autosave to this browser so a refresh doesn't lose work (per-viewer convenience only).
 let autoT = null;
-function autosave(){ clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem('wiggle-paint:project', projectJSON()); } catch {} }, 400); }
+function autosave(){ clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem('chainpainter:project', projectJSON()); } catch {} }, 400); }
 function restore(){
-  try { const raw = localStorage.getItem('wiggle-paint:project'); if (raw){ loadProject(JSON.parse(raw)); return true; } } catch {}
+  try { const raw = localStorage.getItem('chainpainter:project') || localStorage.getItem('wiggle-paint:project'); if (raw){ loadProject(JSON.parse(raw)); autosave(); return true; } } catch {}
   return false;
 }
 $('newProj').addEventListener('click', async () => { if (!totalStrokes() || await ask('Start a new project? Unsaved work is lost.')) freshProject(); });
@@ -469,7 +469,7 @@ $('saveProj').addEventListener('click', async () => {
   let name = await askText('Project name', S.name); if (name === null) return;
   S.name = (name.trim() || 'untitled').replace(/[^\w\- ]+/g, '').slice(0, 40) || 'untitled';
   $('tokName').value = S.name === 'untitled' ? '' : S.name;
-  await saveFile(S.name + '.wiggle.json', projectJSON(), 'Project saved');
+  await saveFile(S.name + '.chainpainter.json', projectJSON(), 'Project saved');
 });
 $('openProj').addEventListener('click', () => $('fileIn').click());
 $('fileIn').addEventListener('change', e => {
@@ -533,7 +533,7 @@ function saveFile(filename, data, okMsg){
 }
 $('download').addEventListener('click', () => {
   if (!totalStrokes()) { toast('Draw something first'); return; }
-  saveFile((S.name || 'wiggle') + '.svg', toSVG(), 'SVG saved');
+  saveFile((S.name || 'chainpainter') + '.svg', toSVG(), 'SVG saved');
 });
 
 // ---------- onchain export (Transient Labs) ----------
@@ -552,7 +552,7 @@ function metadata(svg, hash){
   const bytes = utf8(svg).length;
   return {
     name: tokenName(),
-    description: $('tokDesc').value.trim() || 'Drawn with Wiggle Paint',
+    description: $('tokDesc').value.trim() || 'Drawn with ChainPainter',
     image: 'data:image/svg+xml;base64,' + b64(svg),
     ...(hash ? { image_sha256: hash } : {}),
     media: { size: bytes, dimensions: S.w + 'x' + S.h, mimeType: 'image/svg+xml' },
@@ -595,7 +595,7 @@ $('dlMeta').addEventListener('click', async () => {
   if (!totalStrokes()) { toast('Draw something first'); return; }
   const { meta, uri } = await buildToken();
   overBudget(uri.length);
-  saveFile((S.name || 'wiggle') + '.token.json', JSON.stringify(meta, null, 2), 'Token JSON saved');
+  saveFile((S.name || 'chainpainter') + '.token.json', JSON.stringify(meta, null, 2), 'Token JSON saved');
 });
 
 // ---------- boot ----------
