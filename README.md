@@ -3,6 +3,7 @@
 A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jittered across a few frames and exported as a self‑contained, SMIL‑animated SVG — no JavaScript in the output, so it's ready for on‑chain or anywhere plain SVG renders.
 
 - Pencil, line, rectangle, ellipse, and eraser tools
+- Move tool: drag the whole layer, or nudge it with the arrow keys (Shift = 10 px)
 - Layers (add, hide, reorder, rename, delete)
 - Adjustable wiggle amplitude, speed, and frame count
 - Undo / redo, keyboard shortcuts (`⌘/Ctrl+Z`, `⇧⌘/Ctrl+Z`, `⌘/Ctrl+S`)

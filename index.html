@@ -55,6 +55,7 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
   canvas#c{box-shadow:3px 3px 0 var(--desk-deep)}
 }
 canvas#c{background:var(--paper);touch-action:none;max-width:100%;max-height:100%;border:2px solid var(--chrome-edge);box-shadow:4px 4px 0 var(--desk-deep);image-rendering:auto;cursor:crosshair}
+canvas#c[data-tool="move"]{cursor:move}
 canvas#c.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),4px 4px 0 var(--desk-deep);cursor:not-allowed}
 .palette{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .swatch{width:26px;height:26px;border:2px solid var(--chrome-edge);cursor:pointer;padding:0;min-height:0;box-shadow:none}
@@ -108,6 +109,7 @@ input[type=file]{display:none}
   <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg></button>
   <button class="tool" data-tool="ellipse" aria-pressed="false" title="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
   <button class="tool" data-tool="eraser" aria-pressed="false" title="Eraser"><svg viewBox="0 0 24 24"><path d="M3 15l9-9 7 7-6 6H8z M8 19h12"/></svg></button>
+  <button class="tool" data-tool="move" aria-pressed="false" title="Move layer: drag, or arrow keys (Shift = 10 px)"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3m3-3l3 3M12 21l-3-3m3 3l3-3M3 12l3-3m-3 3l3 3M21 12l-3-3m3 3l-3 3"/></svg></button>
   <span class="spacer"></span>
   <button id="undo" title="Undo">Undo</button>
   <button id="redo" title="Redo">Redo</button>
@@ -194,7 +196,34 @@ const S = {
 };
 const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00','#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
 const $ = id => document.getElementById(id);
-function newLayer(name){ return { name, visible: true, strokes: [], redo: [] }; }
+function newLayer(name){ return { name, visible: true, strokes: [], ops: [], redo: [] }; }
+// Undo history per layer: an op is either a stroke (always the last one in L.strokes) or a move of the whole layer.
+function translateLayer(L, dx, dy){ if (dx || dy) L.strokes.forEach(st => { st.pts = st.pts.map(([x, y]) => [x + dx, y + dy]); }); }
+function undo(L){
+  const op = L.ops.pop(); if (!op) return;
+  if (op.t === 'stroke'){ const st = L.strokes.pop(); if (st) op.st = st; }
+  else translateLayer(L, -op.dx, -op.dy);
+  L.redo.push(op);
+}
+function redo(L){
+  const op = L.redo.pop(); if (!op) return;
+  if (op.t === 'stroke'){ if (op.st) L.strokes.push(op.st); }
+  else translateLayer(L, op.dx, op.dy);
+  L.ops.push(op);
+}
+// Consecutive nudges within a short window merge into one undo step.
+function recordMove(L, dx, dy){
+  const last = L.ops[L.ops.length - 1], now = Date.now();
+  if (last && last.t === 'move' && now - last.at < 800){ last.dx += dx; last.dy += dy; last.at = now; }
+  else L.ops.push({ t: 'move', dx, dy, at: now });
+  L.redo = [];
+}
+function moveLayer(dx, dy){
+  const L = layer();
+  if (!L.visible){ toast('This layer is hidden'); return; }
+  if (!L.strokes.length){ toast('Nothing on this layer to move'); return; }
+  translateLayer(L, dx, dy); recordMove(L, dx, dy); invalidate(); draw();
+}
 function layer(){ return S.layers[S.active]; }
 
 // ---------- deterministic jitter (same in preview and export) ----------
@@ -339,13 +368,17 @@ function fitCanvas(){
 window.addEventListener('resize', fitCanvas);
 
 // ---------- input ----------
-let drawing = false, start = null, raw = [];
+let drawing = false, start = null, raw = [], moving = false, moved = [0, 0];
 function pos(e){
   const r = cv.getBoundingClientRect();
   return [ (e.clientX - r.left) * S.w / r.width, (e.clientY - r.top) * S.h / r.height ];
 }
 cv.addEventListener('pointerdown', e => {
   if (!layer().visible){ toast('This layer is hidden'); return; }
+  if (S.tool === 'move'){
+    if (!layer().strokes.length){ toast('Nothing on this layer to move'); return; }
+    e.preventDefault(); cv.setPointerCapture(e.pointerId); moving = true; start = pos(e); moved = [0, 0]; return;
+  }
   if (budgetBytes() > BUDGET){ e.preventDefault(); flashCanvas(); toast(FULL_MSG); return; }
   e.preventDefault(); cv.setPointerCapture(e.pointerId);
   drawing = true; start = pos(e); raw = [start];
@@ -356,16 +389,27 @@ function applyMove(p){
   if (S.tool === 'pen' || S.tool === 'eraser'){ raw.push(p); live.pts = simplify(raw, SIMPLIFY_EPS); }
   else { const s = shapePts(S.tool, start, p); live.pts = s.pts; live.closed = s.closed; live.sharp = !!s.sharp; }
 }
-cv.addEventListener('pointermove', e => { if (!drawing) return; applyMove(pos(e)); if (!S.playing) draw(); });
+function dragMove(e){
+  const p = pos(e), dx = Math.round(p[0] - start[0]) - moved[0], dy = Math.round(p[1] - start[1]) - moved[1];
+  if (dx || dy){ translateLayer(layer(), dx, dy); moved[0] += dx; moved[1] += dy; cache = null; draw(); }
+}
+cv.addEventListener('pointermove', e => {
+  if (moving){ dragMove(e); return; }
+  if (!drawing) return; applyMove(pos(e)); if (!S.playing) draw();
+});
 cv.addEventListener('pointerup', e => {
+  if (moving){ dragMove(e); moving = false; if (moved[0] || moved[1]) recordMove(layer(), moved[0], moved[1]); invalidate(); draw(); return; }
   if (!drawing) return; drawing = false;
   applyMove(pos(e));
   live.pts = live.pts.map(([x, y]) => [Math.round(x), Math.round(y)]);
   const L = layer(); L.strokes.push(live); live = null;
   if (budgetBytes() > BUDGET){ L.strokes.pop(); flashCanvas(); toast('That stroke would go over 24 KB. ' + FULL_HINT); return; }
-  L.redo = []; invalidate(); draw();
+  L.ops.push({ t: 'stroke' }); L.redo = []; invalidate(); draw();
 });
-cv.addEventListener('pointercancel', () => { drawing = false; live = null; draw(); });
+cv.addEventListener('pointercancel', () => {
+  if (moving){ moving = false; if (moved[0] || moved[1]) recordMove(layer(), moved[0], moved[1]); invalidate(); }
+  drawing = false; live = null; draw();
+});
 
 // ---------- in-page dialogs (styled to match the app; also work where native confirm/prompt are blocked) ----------
 function dialog(msg, withInput, def){
@@ -386,7 +430,7 @@ const askText = (msg, def) => dialog(msg, true, def);
 // ---------- tool controls ----------
 document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.tool').forEach(x => x.setAttribute('aria-pressed', 'false'));
-  b.setAttribute('aria-pressed', 'true'); S.tool = b.dataset.tool;
+  b.setAttribute('aria-pressed', 'true'); S.tool = b.dataset.tool; cv.dataset.tool = S.tool;
 }));
 const pal = $('palette');
 PALETTE.forEach(c => {
@@ -416,13 +460,18 @@ function totalStrokes(){ return S.layers.reduce((n, L) => n + L.strokes.length, 
 $('dims').addEventListener('change', async e => {
   const [w, h] = e.target.value.split(',').map(Number);
   if (totalStrokes() && !(await ask('Changing size clears all layers. Continue?'))) { e.target.value = S.w + ',' + S.h; return; }
-  S.w = w; S.h = h; S.layers.forEach(L => { L.strokes = []; L.redo = []; }); invalidate(); fitCanvas();
+  S.w = w; S.h = h; S.layers.forEach(L => { L.strokes = []; L.ops = []; L.redo = []; }); invalidate(); fitCanvas();
 });
-$('undo').addEventListener('click', () => { const L = layer(); const s = L.strokes.pop(); if (s) L.redo.push(s); invalidate(); draw(); });
-$('redo').addEventListener('click', () => { const L = layer(); const s = L.redo.pop(); if (s) L.strokes.push(s); invalidate(); draw(); });
-$('clear').addEventListener('click', async () => { const L = layer(); if (!L.strokes.length || await ask('Clear layer "' + L.name + '"?')) { L.strokes = []; L.redo = []; invalidate(); draw(); } });
+$('undo').addEventListener('click', () => { undo(layer()); invalidate(); draw(); });
+$('redo').addEventListener('click', () => { redo(layer()); invalidate(); draw(); });
+$('clear').addEventListener('click', async () => { const L = layer(); if (!L.strokes.length || await ask('Clear layer "' + L.name + '"?')) { L.strokes = []; L.ops = []; L.redo = []; invalidate(); draw(); } });
 window.addEventListener('keydown', e => {
   if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range') return;
+  if (S.tool === 'move' && /^Arrow(Up|Down|Left|Right)$/.test(e.key)){
+    e.preventDefault(); const n = e.shiftKey ? 10 : 1;
+    moveLayer(e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0, e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0);
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); (e.shiftKey ? $('redo') : $('undo')).click(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); $('saveProj').click(); }
 });
@@ -470,7 +519,7 @@ function loadProject(obj){
   if (!obj || !['chainpainter', 'wiggle-paint'].includes(obj.app) || !Array.isArray(obj.layers)) throw new Error('Not a ChainPainter project');
   S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled'; S.desc = typeof obj.desc === 'string' ? obj.desc : '';
   S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
-  S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [] }));
+  S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [], ops: (Array.isArray(L.strokes) ? L.strokes : []).map(() => ({ t: 'stroke' })) }));
   if (!S.layers.length) S.layers = [newLayer('Layer 1')];
   S.active = Math.min(S.layers.length - 1, obj.active ?? S.layers.length - 1);
   syncControls();
