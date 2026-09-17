@@ -50,6 +50,12 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
 .tool svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .spacer{flex:1}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0}
+.viewbar{display:none}
+.view .bar,.view .export{display:none}
+.view .viewbar{display:flex;margin:0 8px 10px}
+.view .viewbar .title{font-weight:600;font-size:15px;padding:0 4px}
+.view canvas#c{cursor:default}
+.view header span:not(.by){display:inline}
 @media (max-width:719px){
   .stage{flex:none;padding:6px 4px}
   header{padding:8px 10px 4px} header span:not(.by){display:none}
@@ -68,7 +74,7 @@ label.sl output{min-width:2ch;text-align:right}
 input[type=color]{width:34px;height:32px;border:2px solid var(--chrome-edge);background:var(--chrome);padding:0;cursor:pointer}
 .export{margin:0 8px 10px;display:flex;flex-direction:column;gap:6px}
 .export .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.export .primary{background:var(--accent);color:#fff;border-color:#8a2812;font-weight:600}
+.primary{background:var(--accent);color:#fff;border-color:#8a2812;font-weight:600}
 .stat{font-size:13px;color:#dff3f2}
 textarea{width:100%;height:120px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge);padding:6px;resize:vertical;display:none;-webkit-user-select:text;user-select:text}
 textarea.open{display:block}
@@ -103,7 +109,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<header><h1>ChainPainter</h1><span>draws SVG that wobbles · exports on-chain ready</span><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a></header>
+<header><h1>ChainPainter</h1><span id="tagline">draws SVG that wobbles · exports on-chain ready</span><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a></header>
 
 <div class="bar" role="toolbar" aria-label="Tools">
   <button class="tool" data-tool="pen" aria-pressed="true" title="Pencil"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>
@@ -119,6 +125,15 @@ input[type=file]{display:none}
 </div>
 
 <div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas></div>
+
+<div class="bar viewbar" aria-label="Shared drawing">
+  <span class="title" id="vtitle"></span>
+  <span class="spacer"></span>
+  <button id="vplay">Pause</button>
+  <button id="vdownload">Download SVG</button>
+  <button id="vshare">Copy link</button>
+  <button class="primary" id="remix">Remix in ChainPainter</button>
+</div>
 
 <div class="bar" aria-label="Layers">
   <div class="layers" id="layers"></div>
@@ -161,6 +176,7 @@ input[type=file]{display:none}
     <span class="spacer"></span>
     <button class="primary" id="download">Download SVG</button>
     <button id="copy">Copy SVG</button>
+    <button id="share" title="Copy a link that plays this drawing — the whole project travels in the link, nothing is uploaded">Copy link</button>
     <button id="show">Show code</button>
     <span class="stat" id="stat">0 strokes · 0 bytes</span>
   </div>
@@ -198,6 +214,7 @@ const S = {
 };
 const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00','#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
 const $ = id => document.getElementById(id);
+const TAGLINE = 'draws SVG that wobbles · exports on-chain ready';
 function newLayer(name){ return { name, visible: true, strokes: [], ops: [], redo: [] }; }
 // Undo history per layer: an op is either a stroke (always the last one in L.strokes) or a move of the whole layer.
 function translateLayer(L, dx, dy){ if (dx || dy) L.strokes.forEach(st => { st.pts = st.pts.map(([x, y]) => [x + dx, y + dy]); }); }
@@ -381,6 +398,7 @@ function pos(e){
   return [ (e.clientX - r.left) * S.w / r.width, (e.clientY - r.top) * S.h / r.height ];
 }
 cv.addEventListener('pointerdown', e => {
+  if (viewing) return;
   if (!layer().visible){ toast('This layer is hidden'); return; }
   if (S.tool === 'move'){
     if (!layer().strokes.length){ toast('Nothing on this layer to move'); return; }
@@ -473,6 +491,7 @@ $('undo').addEventListener('click', () => { undo(layer()); invalidate(); draw();
 $('redo').addEventListener('click', () => { redo(layer()); invalidate(); draw(); });
 $('clear').addEventListener('click', async () => { const L = layer(); if (!L.strokes.length || await ask('Clear layer "' + L.name + '"?')) { L.strokes = []; L.ops = []; L.redo = []; invalidate(); draw(); } });
 window.addEventListener('keydown', e => {
+  if (viewing) return;
   if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range') return;
   if (S.tool === 'move' && /^Arrow(Up|Down|Left|Right)$/.test(e.key)){
     e.preventDefault(); const n = e.shiftKey ? 10 : 1;
@@ -544,7 +563,7 @@ function freshProject(){
 }
 // Autosave to this browser so a refresh doesn't lose work (per-viewer convenience only).
 let autoT = null;
-function autosave(){ clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem('chainpainter:project', projectJSON()); } catch {} }, 400); }
+function autosave(){ if (viewing) return; clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem('chainpainter:project', projectJSON()); } catch {} }, 400); }
 function restore(){
   try { const raw = localStorage.getItem('chainpainter:project') || localStorage.getItem('wiggle-paint:project'); if (raw){ loadProject(JSON.parse(raw)); autosave(); return true; } } catch {}
   return false;
@@ -727,9 +746,67 @@ $('dlMeta').addEventListener('click', async () => {
   saveFile((S.name || 'chainpainter') + '.token.json', JSON.stringify(meta, null, 2), 'Token JSON saved');
 });
 
+// ---------- share links ----------
+// The whole project is deflated and base64url-encoded into the URL fragment: #v=1.<data> (1 = deflate-raw,
+// 0 = plain). Nothing leaves the browser; the link doubles as a backup and can be remixed by anyone.
+let viewing = false;
+const b64u = {
+  enc: bytes => { let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec: str => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
+};
+async function pipe(bytes, stream){ const w = stream.writable.getWriter(); w.write(bytes).catch(() => {}); w.close().catch(() => {}); return new Uint8Array(await new Response(stream.readable).arrayBuffer()); }
+async function shareURL(){
+  const raw = utf8(projectJSON());
+  let payload;
+  try { payload = '1.' + b64u.enc(await pipe(raw, new CompressionStream('deflate-raw'))); }
+  catch { payload = '0.' + b64u.enc(raw); }
+  return location.href.split('#')[0] + '#v=' + payload;
+}
+async function projectFromHash(){
+  const m = location.hash.match(/^#v=([01])\.([A-Za-z0-9_-]+)$/); if (!m) return null;
+  let bytes = b64u.dec(m[2]);
+  if (m[1] === '1') bytes = await pipe(bytes, new DecompressionStream('deflate-raw'));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+async function copyLink(){
+  if (!totalStrokes()){ toast('Draw something first'); return; }
+  const url = await shareURL();
+  try { await navigator.clipboard.writeText(url); toast('Link copied (' + fmtKB(url.length) + ')'); }
+  catch { $('code').classList.add('open'); $('code').value = url; $('code').select(); toast('Select and copy the link below'); }
+}
+$('share').addEventListener('click', copyLink);
+$('vshare').addEventListener('click', copyLink);
+$('vdownload').addEventListener('click', () => $('download').click());
+$('vplay').addEventListener('click', () => { $('play').click(); $('vplay').textContent = $('play').textContent; });
+$('remix').addEventListener('click', async () => {
+  let saved = null; try { saved = JSON.parse(localStorage.getItem('chainpainter:project')); } catch {}
+  const hasWork = saved && Array.isArray(saved.layers) && saved.layers.some(L => L.strokes && L.strokes.length);
+  if (hasWork && !(await ask('Open this drawing in the editor? It replaces the drawing saved in this browser.'))) return;
+  viewing = false; document.body.classList.remove('view');
+  history.replaceState(null, '', location.href.split('#')[0]);
+  document.title = 'ChainPainter'; $('tagline').textContent = TAGLINE;
+  autosave(); fitCanvas(); toast('Remixing — this is your drawing now');
+});
+function enterView(obj){
+  viewing = true; document.body.classList.add('view');
+  loadProject(obj);
+  const t = S.name && S.name !== 'untitled' ? S.name : 'Untitled';
+  $('vtitle').textContent = t; document.title = t + ' · ChainPainter'; $('tagline').textContent = 'a shared drawing';
+  $('vplay').textContent = $('play').textContent;
+  fitCanvas();
+}
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v=')) location.reload(); });
+
 // ---------- boot ----------
-if (!restore()) freshProject();
-requestAnimationFrame(loop);
+(async () => {
+  let shared = null;
+  if (location.hash.startsWith('#v=')){
+    try { shared = await projectFromHash(); } catch {}
+    if (!shared) toast('Could not open that link');
+  }
+  if (shared) enterView(shared); else if (!restore()) freshProject();
+  requestAnimationFrame(loop);
+})();
 })();
 </script>
 </body>

@@ -9,6 +9,7 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Undo / redo, keyboard shortcuts (`⌘/Ctrl+Z`, `⇧⌘/Ctrl+Z`, `⌘/Ctrl+S`)
 - Save / open projects as JSON, autosave to the browser
 - Download or copy the finished SVG
+- **Copy link** makes a shareable URL that plays the animation; the whole project is compressed into the link itself, so nothing is uploaded and anyone can hit **Remix** to open it in the editor
 - Mint‑ready export for [Transient Labs onchain art](https://docs.transientlabs.xyz/integrations/onchain-art): one‑click token URI with a live 24 KB budget meter
 
 The whole app is a single file: [`index.html`](index.html). No build step, no dependencies.
@@ -38,6 +39,10 @@ npm i -g vercel
 vercel        # preview deployment
 vercel --prod # production deployment
 ```
+
+## Sharing
+
+**Copy link** packs the entire project (layers, strokes, wiggle settings) into the URL fragment using deflate + base64url. Opening the link shows a clean viewer with the animation, **Download SVG**, **Copy link** and **Remix in ChainPainter**, which loads the drawing into the editor. Because the data lives after the `#`, it never reaches the server; the link is also a complete backup of the piece. A drawing that fits the 24 KB onchain budget makes a link of roughly 3–8 KB.
 
 ## Minting onchain with Transient Labs
 
