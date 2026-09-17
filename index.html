@@ -49,9 +49,25 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
 .tool[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
 .tool svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .spacer{flex:1}
+main{flex:1;display:flex;flex-direction:column;min-height:0}
+.work,.side{display:contents}
+.side > *{order:3} .side > .tools{order:0} .stage{order:1} .viewbar{order:2}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0}
 .viewbar{display:none}
-.view .bar,.view .export{display:none}
+.fs{font-size:18px;padding:4px 10px;line-height:1}
+.fs[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
+/* Wide screens: canvas fills the left, controls live in a scrollable sidebar on the right. */
+@media (min-width:960px) and (min-aspect-ratio:1/1){
+  main{flex-direction:row;align-items:stretch;gap:0}
+  .work{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+  .side{display:flex;flex-direction:column;gap:8px;width:min(440px,42vw);overflow:auto;padding:0 8px 10px 0;flex:none}
+  .side > *{order:0}
+  .side .bar{margin:0}
+  .side .export{margin:0}
+  .view .side{display:none}
+  .view .work .viewbar{margin:0 8px 10px}
+}
+.view .bar:not(.viewbar),.view .export{display:none}
 .view .viewbar{display:flex;margin:0 8px 10px}
 .view .viewbar .title{font-weight:600;font-size:15px;padding:0 4px}
 .view canvas#c{cursor:default}
@@ -111,7 +127,23 @@ input[type=file]{display:none}
 <body>
 <header><h1>ChainPainter</h1><span id="tagline">draws SVG that wobbles · exports on-chain ready</span><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a></header>
 
-<div class="bar" role="toolbar" aria-label="Tools">
+<main>
+<section class="work">
+<div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas></div>
+
+<div class="bar viewbar" aria-label="Shared drawing">
+  <span class="title" id="vtitle"></span>
+  <span class="spacer"></span>
+  <button id="vplay">Pause</button>
+  <button id="vfs" class="fs" title="Full screen">⛶</button>
+  <button id="vdownload">Download SVG</button>
+  <button id="vshare">Copy link</button>
+  <button class="primary" id="remix">Remix in ChainPainter</button>
+</div>
+</section>
+
+<aside class="side">
+<div class="bar tools" role="toolbar" aria-label="Tools">
   <button class="tool" data-tool="pen" aria-pressed="true" title="Pencil"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>
   <button class="tool" data-tool="line" aria-pressed="false" title="Line"><svg viewBox="0 0 24 24"><path d="M4 20L20 4"/></svg></button>
   <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg></button>
@@ -122,17 +154,7 @@ input[type=file]{display:none}
   <button id="undo" title="Undo">Undo</button>
   <button id="redo" title="Redo">Redo</button>
   <button id="clear" title="Clear this layer">Clear layer</button>
-</div>
-
-<div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas></div>
-
-<div class="bar viewbar" aria-label="Shared drawing">
-  <span class="title" id="vtitle"></span>
-  <span class="spacer"></span>
-  <button id="vplay">Pause</button>
-  <button id="vdownload">Download SVG</button>
-  <button id="vshare">Copy link</button>
-  <button class="primary" id="remix">Remix in ChainPainter</button>
+  <button id="fs" class="fs" title="Full screen (F)">⛶</button>
 </div>
 
 <div class="bar" aria-label="Layers">
@@ -197,6 +219,8 @@ input[type=file]{display:none}
   <p class="hint">Token URI is <code>data:application/json;base64,…</code> with the SVG embedded as a base64 data URI, following the <a href="https://docs.transientlabs.xyz/integrations/onchain-art" target="_blank" rel="noopener">Transient Labs onchain art spec</a>. Paste it as the token URI when minting.</p>
   <textarea id="meta" readonly spellcheck="false" aria-label="Token metadata JSON"></textarea>
 </div>
+</aside>
+</main>
 <div class="toast" id="toast"></div>
 <div class="veil" id="veil" role="dialog" aria-modal="true" aria-labelledby="dlgMsg"><div class="dlg">
   <p id="dlgMsg"></p><input id="dlgIn" type="text" maxlength="40">
@@ -379,16 +403,32 @@ function loop(t){
   requestAnimationFrame(loop);
 }
 function fitCanvas(){
-  dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.width = S.w * dpr; cv.height = S.h * dpr;
   const stage = cv.parentElement, mobile = window.innerWidth < 720;
   // On phones the canvas takes the full width and up to ~70% of the screen height; the page scrolls for the controls.
+  // On wide screens the stage is the whole left column, so the canvas grows to fill it.
   const maxW = mobile ? window.innerWidth - 12 : stage.clientWidth - 16;
   const maxH = mobile ? window.innerHeight * 0.7 : stage.clientHeight - 16;
-  const sc = Math.min(maxW / S.w, maxH / S.h, 1.5);
-  cv.style.width = Math.floor(S.w * sc) + 'px'; cv.style.height = Math.floor(S.h * sc) + 'px';
+  const sc = Math.max(0.2, Math.min(maxW / S.w, maxH / S.h, 4));
+  const cssW = Math.floor(S.w * sc), cssH = Math.floor(S.h * sc);
+  cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+  // Backing store follows the displayed size (capped) so strokes stay crisp however big the canvas gets.
+  dpr = Math.min(window.devicePixelRatio || 1, 3) * sc;
+  if (cssW * dpr / sc > 4096 || cssH * dpr / sc > 4096) dpr = 4096 / Math.max(S.w, S.h);
+  cv.width = Math.round(S.w * dpr); cv.height = Math.round(S.h * dpr);
   draw();
 }
+// ---------- full screen ----------
+const fsRoot = document.documentElement;
+const fsSupported = !!(fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen);
+function toggleFullscreen(){
+  const active = document.fullscreenElement || document.webkitFullscreenElement;
+  if (active) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else Promise.resolve().then(() => (fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen).call(fsRoot)).catch(() => toast('Full screen is not available here'));
+}
+if (!fsSupported) document.querySelectorAll('.fs').forEach(b => { b.style.display = 'none'; });
+document.querySelectorAll('.fs').forEach(b => b.addEventListener('click', toggleFullscreen));
+function syncFsButtons(){ const on = !!(document.fullscreenElement || document.webkitFullscreenElement); document.querySelectorAll('.fs').forEach(b => { b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Exit full screen (F)' : 'Full screen (F)'; }); requestAnimationFrame(fitCanvas); }
+document.addEventListener('fullscreenchange', syncFsButtons); document.addEventListener('webkitfullscreenchange', syncFsButtons);
 window.addEventListener('resize', fitCanvas);
 
 // ---------- input ----------
@@ -491,6 +531,7 @@ $('undo').addEventListener('click', () => { undo(layer()); invalidate(); draw();
 $('redo').addEventListener('click', () => { redo(layer()); invalidate(); draw(); });
 $('clear').addEventListener('click', async () => { const L = layer(); if (!L.strokes.length || await ask('Clear layer "' + L.name + '"?')) { L.strokes = []; L.ops = []; L.redo = []; invalidate(); draw(); } });
 window.addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && !(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range')){ e.preventDefault(); toggleFullscreen(); return; }
   if (viewing) return;
   if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range') return;
   if (S.tool === 'move' && /^Arrow(Up|Down|Left|Right)$/.test(e.key)){
