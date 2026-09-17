@@ -244,8 +244,11 @@ function framePaths(st, key){
   return out;
 }
 // Midpoint quadratic smoothing: each vertex becomes a control point, so the wobble bends instead of kinks.
-// Emitted with relative coordinates and implicit repeated commands ("q1 2 3 4 5 6..."), which is the
-// most compact SVG path form. The same string feeds both the canvas preview (Path2D) and the export.
+// Emitted as one explicit "q" followed by "t" shorthand segments: "t" infers its control point by reflecting
+// the previous one through the current point, which for a midpoint chain lands on the next vertex. Each
+// segment after the first therefore costs one coordinate pair. Midpoints are chosen from the *actual*
+// (reflected) control so rounding never accumulates: every control stays within 1 px of its vertex.
+// Relative coordinates + implicit repeated commands. The same string feeds the canvas preview and the export.
 function pathFrom(p, closed, smooth){
   const n = p.length;
   let cx = 0, cy = 0;
@@ -253,24 +256,26 @@ function pathFrom(p, closed, smooth){
   const M = u => { cx = u[0]; cy = u[1]; return 'M' + u[0] + ' ' + u[1]; };
   const to = u => { const t = num(u[0] - cx) + num(u[1] - cy); cx = u[0]; cy = u[1]; return t; };
   const mid = (u, v) => [Math.round((u[0] + v[0]) / 2), Math.round((u[1] + v[1]) / 2)];
-  // Both points of a relative q are measured from the segment start.
-  const q = (c, e) => { const t = num(c[0] - cx) + num(c[1] - cy) + num(e[0] - cx) + num(e[1] - cy); cx = e[0]; cy = e[1]; return t; };
   let d;
   if (n === 1) d = M(p[0]) + 'l0 0';
   else if (!smooth || n < 3){
     d = M(p[0]) + 'l';
     for (let i = 1; i < n; i++) d += to(p[i]);
     if (closed) d += 'z';
-  } else if (closed){
-    d = M(mid(p[n - 1], p[0])) + 'q';
-    for (let i = 0; i < n; i++) d += q(p[i], mid(p[i], p[(i + 1) % n]));
-    d += 'z';
   } else {
-    d = M(p[0]) + 'q';
-    for (let i = 1; i < n - 1; i++) d += q(p[i], mid(p[i], p[i + 1]));
-    d += 'l' + to(p[n - 1]);
+    // Segment k has control c and ends at the midpoint of c and the next vertex.
+    const verts = closed ? p.map((_, i) => p[(i + 1) % n]) : p.slice(2);   // "next vertex" for each segment
+    let c = closed ? p[0] : p[1];
+    d = M(closed ? mid(p[n - 1], p[0]) : p[0]);
+    verts.forEach((v, k) => {
+      const e = mid(c, v);
+      if (k === 0) d += 'q' + num(c[0] - cx) + num(c[1] - cy) + num(e[0] - cx) + num(e[1] - cy);
+      else d += (k === 1 ? 't' : '') + num(e[0] - cx) + num(e[1] - cy);
+      c = [2 * e[0] - c[0], 2 * e[1] - c[1]]; cx = e[0]; cy = e[1];
+    });
+    d += closed ? 'z' : 'l' + to(p[n - 1]);
   }
-  return d.replace(/([lq]) /g, '$1');
+  return d.replace(/([lqt]) /g, '$1');
 }
 
 // ---------- geometry helpers ----------
@@ -561,26 +566,43 @@ $('fileIn').addEventListener('change', e => {
 
 // ---------- SVG export ----------
 // Self-contained SMIL animation: each path cycles its jittered frames. Eraser strokes become a per-layer mask.
+// The drawing is written once per frame as a frame group; one <animate> per group toggles which is displayed.
+// Frame 0 is the static fallback. Inside a frame, consecutive strokes with the same colour and width share
+// a <g> so the attributes aren't repeated per path. Eraser strokes become a per-layer, per-frame mask.
 function toSVG(){
-  const dur = (S.frames / S.fps).toFixed(3);
-  const anim = ps => (S.amp > 0 && S.frames > 1) ? `<animate attributeName="d" values="${ps.join(';')}" dur="${dur}s" calcMode="discrete" repeatCount="indefinite"/>` : '';
-  let defs = '', body = '';
-  S.layers.forEach((L, li) => {
-    if (!L.visible || !L.strokes.length) return;
-    const paints = [], erases = [];
-    L.strokes.forEach((st, i) => {
-      const ps = framePaths(st, li * 100000 + i);
-      const el = `<path${st.erase ? '' : ` stroke="${st.color}"`} stroke-width="${st.size}" d="${ps[0]}">${anim(ps)}</path>`;
-      (st.erase ? erases : paints).push(el);
-    });
-    if (!paints.length) return;
-    let g = `<g id="L${li + 1}"`;
-    if (erases.length){
-      defs += `<mask id="m${li + 1}"><rect width="${S.w}" height="${S.h}" fill="#fff"/><g stroke="#000">${erases.join('')}</g></mask>`;
-      g += ` mask="url(#m${li + 1})"`;
+  const animated = S.amp > 0 && S.frames > 1, F = animated ? S.frames : 1;
+  const dur = (F / S.fps).toFixed(3);
+  const layers = S.layers.map((L, li) => ({ L, li, paths: L.strokes.map((st, i) => framePaths(st, li * 100000 + i)) }))
+    .filter(x => x.L.visible && x.L.strokes.some(st => !st.erase));
+  // Emit strokes as colour/width runs; a run may continue across layers when nothing separates them.
+  function runs(items, colored){
+    let out = '', cur = null;
+    for (const { st, d } of items){
+      const key = (colored ? st.color : '') + '|' + st.size;
+      if (key !== cur){ if (cur !== null) out += '</g>'; out += `<g${colored ? ` stroke="${st.color}"` : ''} stroke-width="${st.size}">`; cur = key; }
+      out += `<path d="${d}"/>`;
     }
-    body += g + '>' + paints.join('') + '</g>';
-  });
+    return cur === null ? '' : out + '</g>';
+  }
+  let defs = '', body = '';
+  for (let f = 0; f < F; f++){
+    let frame = '', pending = [];
+    const flush = () => { frame += runs(pending, true); pending = []; };
+    layers.forEach(({ L, li, paths }) => {
+      const paints = [], erases = [];
+      L.strokes.forEach((st, i) => (st.erase ? erases : paints).push({ st, d: paths[i][f] }));
+      if (!erases.length){ pending.push(...paints); return; }
+      flush();
+      const id = `m${li + 1}f${f}`;
+      defs += `<mask id="${id}"><rect width="${S.w}" height="${S.h}" fill="#fff"/><g stroke="#000">${runs(erases, false)}</g></mask>`;
+      frame += `<g mask="url(#${id})">${runs(paints, true)}</g>`;
+    });
+    flush();
+    if (animated){
+      const vis = Array.from({ length: F }, (_, k) => k === f ? 'inline' : 'none').join(';');
+      body += `<g${f ? ' display="none"' : ''}><animate attributeName="display" values="${vis}" dur="${dur}s" calcMode="discrete" repeatCount="indefinite"/>${frame}</g>`;
+    } else body += frame;
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S.w} ${S.h}" width="${S.w}" height="${S.h}" fill="none" stroke-linecap="round" stroke-linejoin="round">`
     + (defs ? `<defs>${defs}</defs>` : '')
     + `<rect width="${S.w}" height="${S.h}" fill="${S.bg}"/>${body}</svg>`;

@@ -53,4 +53,4 @@ The **Mint onchain** section at the bottom builds a token URI that follows the [
 
 ## How the export works
 
-Each stroke's points are offset by a seeded random amount per frame (the same seed drives the on‑screen preview and the export, so what you see is what you get). Frames are written as alternate `d` values on an `<animate>` element with `calcMode="discrete"`, which flips between them at the chosen speed. Eraser strokes become a per‑layer `<mask>` rather than being baked into the paths.
+Each stroke's points are offset by a seeded random amount per frame (the same seed drives the on‑screen preview and the export, so what you see is what you get). The drawing is written once per frame as a group, and one `<animate attributeName="display">` per group flips between them at the chosen speed with `calcMode="discrete"`; the first group doubles as the static fallback. Strokes are stored as compact relative paths (`q` then `t` shorthand curves), consecutive strokes of the same colour and width share a group, and eraser strokes become a per‑layer, per‑frame `<mask>` rather than being baked into the paths.
