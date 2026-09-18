@@ -85,6 +85,10 @@ canvas#c.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),4px 
 .palette{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .swatch{width:26px;height:26px;border:2px solid var(--chrome-edge);cursor:pointer;padding:0;min-height:0;box-shadow:none}
 .swatch[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:-1px}
+.swatch.pastel{display:none}
+.pastels .swatch.pastel{display:block}
+.secret{width:22px;height:22px;margin-left:6px;background:transparent;border:0;box-shadow:none;padding:0;min-height:0;cursor:default;opacity:0;align-self:center}
+.secret:focus-visible{opacity:1;outline:2px dashed #cfe9e8}
 label.sl{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
 label.sl input[type=range]{width:90px;accent-color:var(--accent)}
 label.sl output{min-width:2ch;text-align:right}
@@ -143,7 +147,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 </style>
 </head>
 <body>
-<header><h1>ChainPainter</h1><span id="tagline">draws SVG that wobbles · exports on-chain ready</span><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a></header>
+<header><h1>ChainPainter</h1><span id="tagline">draws SVG that wobbles · exports on-chain ready</span><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a><button class="secret" id="secret" aria-label="Toggle Brinkman pastels" tabindex="-1"></button></header>
 
 <main>
 <section class="work">
@@ -276,7 +280,9 @@ const S = {
   amp: 2, fps: 8, frames: 3, playing: true, seed: (Math.random() * 1e9) | 0,
   layers: [], active: 0, name: 'untitled', desc: '',
 };
-const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00','#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
+const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00'];
+// Brinkman pastels: hidden until you press B or tap the secret spot beside the credit link.
+const PASTELS = ['#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
 const $ = id => document.getElementById(id);
 const TAGLINE = 'draws SVG that wobbles · exports on-chain ready';
 let viewing = false; // true while showing a shared link (read-only)
@@ -558,8 +564,8 @@ document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () =
   b.setAttribute('aria-pressed', 'true'); S.tool = b.dataset.tool; cv.dataset.tool = S.tool;
 }));
 const pal = $('palette');
-PALETTE.forEach(c => {
-  const b = document.createElement('button'); b.className = 'swatch'; b.style.background = c; b.title = c;
+[...PALETTE, ...PASTELS].forEach(c => {
+  const b = document.createElement('button'); b.className = 'swatch' + (PASTELS.includes(c) ? ' pastel' : ''); b.style.background = c; b.title = c;
   b.setAttribute('aria-pressed', c === S.color ? 'true' : 'false');
   b.addEventListener('click', () => setColor(c));
   pal.appendChild(b);
@@ -569,6 +575,13 @@ function setColor(c){
   pal.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', s.title === c ? 'true' : 'false'));
 }
 $('custom').addEventListener('input', e => setColor(e.target.value));
+function setPastels(on, quiet){
+  document.body.classList.toggle('pastels', on);
+  try { localStorage.setItem('chainpainter:pastels', on ? '1' : '0'); } catch {}
+  if (!quiet) toast(on ? 'Brinkman pastels unlocked' : 'Pastels hidden');
+}
+$('secret').addEventListener('click', () => setPastels(!document.body.classList.contains('pastels')));
+try { if (localStorage.getItem('chainpainter:pastels') === '1') setPastels(true, true); } catch {}
 function bindRange(id, key, out, after){
   $(id).addEventListener('input', e => { S[key] = +e.target.value; $(out).value = e.target.value; if (after) after(); });
 }
@@ -605,6 +618,7 @@ window.addEventListener('keydown', e => {
   if (plain && (e.key === '[' || e.key === ']')){ e.preventDefault(); S.size = Math.max(1, Math.min(40, S.size + (e.key === ']' ? 1 : -1))); $('size').value = S.size; $('sizeOut').value = S.size; return; }
   if (plain && e.key === ' ' && e.target.tagName !== 'BUTTON'){ e.preventDefault(); $('play').click(); return; }
   if (plain && e.key === '?'){ e.preventDefault(); showHelp(); return; }
+  if (plain && e.key.toLowerCase() === 'b'){ e.preventDefault(); setPastels(!document.body.classList.contains('pastels')); return; }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); (e.shiftKey ? $('redo') : $('undo')).click(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); $('saveProj').click(); }
 });
