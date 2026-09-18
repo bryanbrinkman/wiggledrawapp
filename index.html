@@ -543,6 +543,33 @@ function dialog(msg, withInput, def){
   });
 }
 const ask = msg => dialog(msg, false);
+// Clipboard writes must happen inside the user's tap on WebKit (Safari, and every browser on iPad/iPhone).
+// Order of attempts: a string is written synchronously; a pending value goes through ClipboardItem with a
+// promise, which WebKit accepts; otherwise await it and try writeText; if all fail, show a dialog whose
+// Copy button writes inside its own click.
+async function copyText(value, okMsg, label){
+  const write = async () => {
+    if (typeof value === 'string'){ await navigator.clipboard.writeText(value); return value; }
+    if (window.ClipboardItem && navigator.clipboard.write){
+      try {
+        const item = new ClipboardItem({ 'text/plain': value.then(t => new Blob([t], { type: 'text/plain' })) });
+        await navigator.clipboard.write([item]); return value;
+      } catch {}
+    }
+    const text = await value; await navigator.clipboard.writeText(text); return text;
+  };
+  try { const t = await write(); toast(okMsg(t)); return true; }
+  catch { copyDialog(await value, label); return false; }
+}
+function copyDialog(text, label){
+  const v = $('veil'), inp = $('dlgIn');
+  $('dlgMsg').textContent = label; inp.style.display = 'block'; inp.value = text; inp.readOnly = true;
+  $('dlgOk').textContent = 'Copy'; v.classList.add('open');
+  const done = () => { v.classList.remove('open'); $('dlgOk').textContent = 'OK'; inp.readOnly = false; $('dlgOk').onclick = $('dlgNo').onclick = null; v.onclick = null; inp.onkeydown = null; };
+  $('dlgOk').onclick = () => { navigator.clipboard.writeText(text).then(() => toast('Copied'), () => toast('Select the text and copy it')); done(); };
+  $('dlgNo').onclick = done; v.onclick = e => { if (e.target === v) done(); }; inp.onkeydown = e => { if (e.key === 'Escape') done(); };
+  setTimeout(() => { inp.focus(); try { inp.setSelectionRange(0, text.length); } catch {} }, 0);
+}
 function showHelp(){
   const rows = [['P L R O E V', 'Pencil, line, rectangle, ellipse, eraser, move'], ['[ ]', 'Brush size'], ['Ctrl/⌘ Z', 'Undo'], ['Shift Ctrl/⌘ Z', 'Redo'],
     ['Arrows', 'Nudge layer (Move tool), Shift = 10 px'], ['Space', 'Play / pause'], ['Ctrl/⌘ S', 'Save project'], ['F', 'Full screen'], ['?', 'This list']];
@@ -688,7 +715,7 @@ function freshProject(){
 }
 // Autosave to this browser so a refresh doesn't lose work (per-viewer convenience only).
 let autoT = null;
-function autosave(){ if (viewing) return; clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem('chainpainter:project', projectJSON()); } catch {} }, 400); }
+function autosave(){ refreshShareCache(); if (viewing) return; clearTimeout(autoT); autoT = setTimeout(() => { try { localStorage.setItem('chainpainter:project', projectJSON()); } catch {} }, 400); }
 function restore(){
   try { const raw = localStorage.getItem('chainpainter:project') || localStorage.getItem('wiggle-paint:project'); if (raw){ loadProject(JSON.parse(raw)); autosave(); return true; } } catch {}
   return false;
@@ -765,11 +792,7 @@ $('show').addEventListener('click', e => {
   const c = $('code'); c.classList.toggle('open'); c.value = toSVG();
   e.target.textContent = c.classList.contains('open') ? 'Hide code' : 'Show code';
 });
-$('copy').addEventListener('click', async () => {
-  const svg = toSVG();
-  try { await navigator.clipboard.writeText(svg); toast('SVG copied'); }
-  catch { $('code').classList.add('open'); $('code').value = svg; $('code').select(); toast('Select and copy from the box below'); }
-});
+$('copy').addEventListener('click', () => copyText(toSVG(), () => 'SVG copied', 'SVG source'));
 
 function saveFile(filename, data, okMsg){
   try {
@@ -858,12 +881,10 @@ $('showMeta').addEventListener('click', async e => {
   e.target.textContent = m.classList.contains('open') ? 'Hide token JSON' : 'Show token JSON';
   if (m.classList.contains('open')) m.value = JSON.stringify((await buildToken()).meta, null, 2);
 });
-$('copyUri').addEventListener('click', async () => {
+$('copyUri').addEventListener('click', () => {
   if (!totalStrokes()) { toast('Draw something first'); return; }
-  const { uri } = await buildToken();
-  if (overBudget(uri.length)) return;
-  try { await navigator.clipboard.writeText(uri); toast('Token URI copied (' + fmtKB(uri.length) + ')'); }
-  catch { $('meta').classList.add('open'); $('meta').value = uri; $('meta').select(); toast('Select and copy from the box below'); }
+  if (overBudget(budgetBytes())) return;
+  copyText(buildToken().then(t => t.uri), t => 'Token URI copied (' + fmtKB(t.length) + ')', 'Token URI');
 });
 $('dlMeta').addEventListener('click', async () => {
   if (!totalStrokes()) { toast('Draw something first'); return; }
@@ -893,11 +914,16 @@ async function projectFromHash(){
   if (m[1] === '1') bytes = await pipe(bytes, new DecompressionStream('deflate-raw'));
   return JSON.parse(new TextDecoder().decode(bytes));
 }
-async function copyLink(){
+// The link is rebuilt in the background after each change so a tap on Copy link can usually write it instantly.
+let shareCache = { json: null, url: null }, shareT = null;
+function refreshShareCache(){
+  clearTimeout(shareT);
+  shareT = setTimeout(() => { const json = projectJSON(); shareURL().then(url => { if (projectJSON() === json) shareCache = { json, url }; }).catch(() => {}); }, 500);
+}
+function copyLink(){
   if (!totalStrokes()){ toast('Draw something first'); return; }
-  const url = await shareURL();
-  try { await navigator.clipboard.writeText(url); toast('Link copied (' + fmtKB(url.length) + ')'); }
-  catch { $('code').classList.add('open'); $('code').value = url; $('code').select(); toast('Select and copy the link below'); }
+  const fresh = shareCache.url && shareCache.json === projectJSON();
+  copyText(fresh ? shareCache.url : shareURL(), u => 'Link copied (' + fmtKB(u.length) + ')', 'Share link');
 }
 $('share').addEventListener('click', copyLink);
 $('vshare').addEventListener('click', copyLink);
@@ -918,6 +944,7 @@ function enterView(obj){
   const t = S.name && S.name !== 'untitled' ? S.name : 'Untitled';
   $('vtitle').textContent = t; document.title = t + ' · ChainPainter'; $('tagline').textContent = 'a shared drawing';
   $('vplay').textContent = $('play').textContent;
+  shareCache = { json: projectJSON(), url: location.href };
   fitCanvas();
 }
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v=')) location.reload(); });
