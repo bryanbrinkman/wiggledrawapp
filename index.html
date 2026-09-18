@@ -87,6 +87,10 @@ canvas#c.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),4px 
 .swatch{width:26px;height:26px;border:2px solid var(--chrome-edge);cursor:pointer;padding:0;min-height:0;box-shadow:none}
 .swatch[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:-1px}
 .swatch.pastel{display:none}
+.swatch.add{background:var(--chrome);color:var(--ink);font:inherit;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;padding-bottom:2px}
+.swatch.add:hover{color:var(--accent)}
+.hiddenpick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;min-height:0}
+.palette{position:relative}
 .pastels .swatch.pastel{display:block}
 .secret{width:22px;height:22px;margin-left:6px;background:transparent;border:0;box-shadow:none;padding:0;min-height:0;cursor:default;opacity:0;align-self:center}
 .secret:focus-visible{opacity:1;outline:2px dashed #cfe9e8}
@@ -714,15 +718,44 @@ document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () =
   b.setAttribute('aria-pressed', 'true'); S.tool = b.dataset.tool; cv.dataset.tool = S.tool;
 }));
 const pal = $('palette');
-[...PALETTE, ...PASTELS].forEach(c => {
-  const b = document.createElement('button'); b.className = 'swatch' + (PASTELS.includes(c) ? ' pastel' : ''); b.style.background = c; b.title = c;
-  b.setAttribute('aria-pressed', c === S.color ? 'true' : 'false');
-  b.addEventListener('click', () => setColor(c));
-  pal.appendChild(b);
-});
+// Colours the user added with the + swatch; kept in this browser.
+let CUSTOM = []; try { CUSTOM = JSON.parse(localStorage.getItem('chainpainter:swatches') || '[]').filter(c => /^#[0-9a-f]{6}$/i.test(c)); } catch {}
+const saveCustom = () => { try { localStorage.setItem('chainpainter:swatches', JSON.stringify(CUSTOM)); } catch {} };
+function renderPalette(){
+  pal.innerHTML = '';
+  const mk = (c, cls) => {
+    const b = document.createElement('button'); b.className = 'swatch' + cls; b.style.background = c; b.dataset.color = c; b.title = c;
+    b.setAttribute('aria-pressed', c === S.color ? 'true' : 'false');
+    b.addEventListener('click', () => { if (!b.dataset.held) setColor(c); delete b.dataset.held; });
+    pal.appendChild(b); return b;
+  };
+  PALETTE.forEach(c => mk(c, ''));
+  PASTELS.forEach(c => mk(c, ' pastel'));
+  CUSTOM.forEach(c => {
+    const b = mk(c, ' custom'); b.title = c + ' · hold or right-click to remove';
+    let t = null;
+    const remove = () => { CUSTOM = CUSTOM.filter(x => x !== c); saveCustom(); renderPalette(); toast('Removed ' + c); };
+    b.addEventListener('pointerdown', () => { t = setTimeout(() => { b.dataset.held = '1'; remove(); }, 600); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => clearTimeout(t)));
+    b.addEventListener('contextmenu', e => { e.preventDefault(); clearTimeout(t); remove(); });
+  });
+  const add = document.createElement('button'); add.className = 'swatch add'; add.textContent = '+'; add.title = 'Add a colour to the palette';
+  add.addEventListener('click', () => $('addColor').click());
+  pal.appendChild(add);
+  const inp = document.createElement('input'); inp.type = 'color'; inp.id = 'addColor'; inp.value = S.color; inp.tabIndex = -1; inp.className = 'hiddenpick';
+  inp.addEventListener('change', e => addSwatch(e.target.value));
+  pal.appendChild(inp);
+}
+function addSwatch(c){
+  c = c.toLowerCase();
+  if (![...PALETTE, ...PASTELS, ...CUSTOM].includes(c)){ CUSTOM.push(c); saveCustom(); renderPalette(); toast('Added ' + c + ' to the palette'); }
+  else if (PASTELS.includes(c) && !document.body.classList.contains('pastels')) setPastels(true);
+  setColor(c);
+}
+renderPalette();
 function setColor(c){
   S.color = c; $('custom').value = c;
-  pal.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', s.title === c ? 'true' : 'false'));
+  pal.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', s.dataset.color === c ? 'true' : 'false'));
 }
 // Safari's colour picker fires only "change" (Chrome fires "input" live), so listen to both.
 ['input', 'change'].forEach(ev => $('custom').addEventListener(ev, e => setColor(e.target.value)));
