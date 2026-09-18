@@ -1,0 +1,21 @@
+{
+  "name": "wiggledrawapp",
+  "version": "1.0.0",
+  "description": "ChainPainter - draws SVG that wobbles",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve .",
+    "lint": "echo 'No linter configured'",
+    "build": "echo 'No build step required - static HTML'"
+  },
+  "keywords": [
+    "svg",
+    "drawing",
+    "animation"
+  ],
+  "author": "Bryan Brinkman",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  }
+}
