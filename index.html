@@ -308,13 +308,13 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 
   <div class="panel" id="panel-abx" hidden>
     <ol class="steps">
-      <li>ABX counts the <b>raw SVG</b> against 24 KB, so you get about 1.8× more room than Transient. It runs from the command line with your browser wallet; Base Sepolia is the free testnet, Base is production beta.
+      <li>ABX counts the <b>raw SVG</b> against 24 KB, so you get about 1.8× more room than Transient. It runs from the command line with your browser wallet on Base (production beta, real funds). Switch to Base Sepolia for a free rehearsal.
         <div class="row">
           <label class="field short">Symbol <input type="text" id="symbol" maxlength="6" placeholder="AUTO"></label>
           <label class="sl">Network <select id="abxChain">
-            <option value="base-sepolia">Base Sepolia (testnet)</option>
-            <option value="sepolia">Sepolia (testnet)</option>
             <option value="base">Base (production beta)</option>
+            <option value="base-sepolia">Base Sepolia (free testnet)</option>
+            <option value="sepolia">Sepolia (free testnet)</option>
           </select></label>
         </div></li>
       <li><button id="abxDownload">Download SVG</button> and run the commands from the folder you saved <code id="abxFile">piece.svg</code> in. Install the tool once with <code>npm i -g @artblocks/abx-cli</code>.</li>
@@ -350,7 +350,7 @@ const S = {
   w: 512, h: 512, bg: '#fbfaf3', color: '#161616', size: 6, tool: 'pen',
   amp: 2, fps: 8, frames: 3, playing: true, seed: (Math.random() * 1e9) | 0,
   layers: [], active: 0, name: 'untitled', desc: '',
-  platform: 'transient', symbol: '', abxChain: 'base-sepolia',
+  platform: 'transient', symbol: '', abxChain: 'base',
 };
 const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00'];
 // Brinkman pastels: hidden until you press B or tap the secret spot beside the credit link.
@@ -926,7 +926,7 @@ function projectJSON(){
 function loadProject(obj){
   if (!obj || !['chainpainter', 'wiggle-paint'].includes(obj.app) || !Array.isArray(obj.layers)) throw new Error('Not a ChainPainter project');
   S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled'; S.desc = typeof obj.desc === 'string' ? obj.desc : '';
-  S.platform = obj.platform === 'abx' ? 'abx' : 'transient'; S.symbol = typeof obj.symbol === 'string' ? obj.symbol : ''; S.abxChain = ['base-sepolia', 'sepolia', 'base'].includes(obj.abxChain) ? obj.abxChain : 'base-sepolia';
+  S.platform = obj.platform === 'abx' ? 'abx' : 'transient'; S.symbol = typeof obj.symbol === 'string' ? obj.symbol : ''; S.abxChain = ['base-sepolia', 'sepolia', 'base'].includes(obj.abxChain) ? obj.abxChain : 'base';
   S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
   S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [], ops: (Array.isArray(L.strokes) ? L.strokes : []).map(() => ({ t: 'stroke' })) }));
   if (!S.layers.length) S.layers = [newLayer('Layer 1')];
@@ -1139,7 +1139,7 @@ function abxCmd(mode){
     + ' --description ' + shq(abxDesc()) + ' --onchain-uri ' + (mode === 'dry' ? '--dry-run' : '--sign') + ' --for 0xYourAddress';
 }
 function abxPrompt(){
-  const net = { 'base-sepolia': 'Base Sepolia', sepolia: 'Sepolia', base: 'Base (production beta — I have already proven the flow on Base Sepolia)' }[S.abxChain];
+  const net = { 'base-sepolia': 'Base Sepolia (testnet)', sepolia: 'Sepolia (testnet)', base: 'Base (production beta, real funds — tell me if I should rehearse on Base Sepolia first)' }[S.abxChain];
   return 'Read https://docs.abx.io/docs/using-abx/quickstart, install the ABX skill, and help me deploy ' + shq('./' + abxFile())
     + ' as a fully onchain 1/1 with `abx deploy --onchain-uri`. Name: ' + shq(tokenName()) + '. Symbol: ' + abxSymbol() + '. Description: ' + shq(abxDesc())
     + '. Network: ' + net + '. Start with --dry-run, explain what would deploy, then walk me through funding and signing with my browser wallet (--sign --for my address) before anything real. My wallet address is 0xYourAddress.';
