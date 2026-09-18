@@ -574,7 +574,8 @@ function setColor(c){
   S.color = c; $('custom').value = c;
   pal.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', s.title === c ? 'true' : 'false'));
 }
-$('custom').addEventListener('input', e => setColor(e.target.value));
+// Safari's colour picker fires only "change" (Chrome fires "input" live), so listen to both.
+['input', 'change'].forEach(ev => $('custom').addEventListener(ev, e => setColor(e.target.value)));
 function setPastels(on, quiet){
   document.body.classList.toggle('pastels', on);
   try { localStorage.setItem('chainpainter:pastels', on ? '1' : '0'); } catch {}
@@ -589,7 +590,7 @@ bindRange('size', 'size', 'sizeOut');
 bindRange('amp', 'amp', 'ampOut', () => { invalidate(); draw(); });
 bindRange('fps', 'fps', 'fpsOut', autosave);
 bindRange('frames', 'frames', 'framesOut', () => { invalidate(); draw(); });
-$('bg').addEventListener('input', e => { S.bg = e.target.value; invalidate(); draw(); });
+['input', 'change'].forEach(ev => $('bg').addEventListener(ev, e => { if (S.bg === e.target.value) return; S.bg = e.target.value; invalidate(); draw(); }));
 $('play').addEventListener('click', e => {
   S.playing = !S.playing; e.target.textContent = S.playing ? 'Pause' : 'Play';
   e.target.setAttribute('aria-pressed', String(S.playing)); draw();
