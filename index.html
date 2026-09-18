@@ -34,7 +34,19 @@ body{
   -webkit-user-select:none; user-select:none;
 }
 header{display:flex;align-items:baseline;gap:10px;padding:10px 12px 6px}
-header .by{margin-left:auto;font-size:13px;color:#cfe9e8;text-decoration:none;border-bottom:2px solid transparent}
+header{flex-wrap:wrap}
+.tipbtn{margin-left:auto;font:inherit;font-size:13px;color:#ffd9d0;background:none;border:0;box-shadow:none;padding:0 10px 0 0;min-height:0;cursor:pointer;border-bottom:2px solid transparent}
+.tipbtn:hover,.tipbtn:focus-visible{color:#fff;border-bottom-color:var(--accent);outline:none;transform:none}
+.tipbtn:active{transform:none;box-shadow:none}
+.tipbtn + .by{margin-left:0}
+@media (max-width:719px){ .tipbtn{font-size:12px;padding-right:8px} .tipbtn .long{display:none} }
+.tip .dim{font-weight:400;color:var(--muted);font-size:13px}
+.tip .row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.tip .k{width:64px;color:var(--muted);font-size:13px}
+.tip .v{flex:1;font-weight:600;color:var(--ink);text-decoration:none;-webkit-user-select:text;user-select:text}
+.tip a.v:hover{color:var(--accent)}
+.tip img{display:block;margin:4px auto 12px;border:2px solid var(--chrome-edge);background:#fff;padding:4px;width:200px;height:200px}
+header .by{font-size:13px;color:#cfe9e8;text-decoration:none;border-bottom:2px solid transparent}
 header .by:hover,header .by:focus-visible{color:#fff;border-bottom-color:var(--accent);outline:none}
 header h1{font-size:22px;font-weight:600;color:#fff;letter-spacing:.5px}
 header span{color:#cfe9e8;font-size:13px}
@@ -154,7 +166,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 </style>
 </head>
 <body>
-<header><h1>ChainPainter</h1><span id="tagline">draws SVG that wobbles · exports on-chain ready</span><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a><button class="secret" id="secret" aria-label="Toggle Brinkman pastels" tabindex="-1"></button></header>
+<header><h1>ChainPainter</h1><span id="tagline">draws SVG that wobbles · exports on-chain ready</span><button class="tipbtn" id="tipBtn"><span class="long">enjoy this app? </span>tip the artist ♥</button><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener">made by Brinkman ↗</a><button class="secret" id="secret" aria-label="Toggle Brinkman pastels" tabindex="-1"></button></header>
 
 <main>
 <section class="work">
@@ -274,6 +286,14 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 </aside>
 </main>
 <div class="toast" id="toast"></div>
+<div class="veil" id="tipVeil" role="dialog" aria-modal="true" aria-labelledby="tipTitle"><div class="dlg tip">
+  <p id="tipTitle"><strong>Tip the artist ♥</strong><br><span class="dim">Thanks for drawing with ChainPainter.</span></p>
+  <div class="row"><span class="k">Venmo</span><a class="v" href="https://venmo.com/u/brinkmanatee" target="_blank" rel="noopener">@brinkmanatee ↗</a><button class="small" data-copy="@brinkmanatee">Copy</button></div>
+  <div class="row"><span class="k">ETH</span><a class="v" href="https://app.ens.domains/brinkman.eth" target="_blank" rel="noopener">brinkman.eth ↗</a><button class="small" data-copy="brinkman.eth">Copy</button></div>
+  <div class="row qr"><span class="k">X Money</span><span class="v">scan in the X app</span></div>
+  <img src="tip-qr.png" alt="X Money QR code for Brinkman" width="180" height="180" loading="lazy">
+  <div class="btns"><button id="tipClose">Close</button></div>
+</div></div>
 <div class="veil" id="veil" role="dialog" aria-modal="true" aria-labelledby="dlgMsg"><div class="dlg">
   <p id="dlgMsg"></p><input id="dlgIn" type="text" maxlength="40">
   <div class="btns"><button id="dlgNo">Cancel</button><button class="ok" id="dlgOk">OK</button></div>
@@ -710,6 +730,16 @@ function showHelp(){
   setTimeout(() => $('dlgOk').focus(), 0);
 }
 $('help').addEventListener('click', showHelp);
+// ---------- tip jar ----------
+{
+  const v = $('tipVeil');
+  const close = () => v.classList.remove('open');
+  $('tipBtn').addEventListener('click', () => { v.classList.add('open'); setTimeout(() => $('tipClose').focus(), 0); });
+  $('tipClose').addEventListener('click', close);
+  v.addEventListener('click', e => { if (e.target === v) close(); });
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && v.classList.contains('open')){ e.stopPropagation(); close(); } }, true);
+  v.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.copy, t => 'Copied ' + t, 'Copy this')));
+}
 const askText = (msg, def) => dialog(msg, true, def);
 
 // ---------- tool controls ----------
