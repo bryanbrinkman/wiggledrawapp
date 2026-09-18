@@ -45,17 +45,15 @@ vercel --prod # production deployment
 
 **Copy link** packs the entire project (layers, strokes, wiggle settings) into the URL fragment using deflate + base64url. Opening the link shows a clean viewer with the animation, **Download SVG**, **Copy link** and **Remix in ChainPainter**, which loads the drawing into the editor. Because the data lives after the `#`, it never reaches the server; the link is also a complete backup of the piece. A drawing that fits the 24 KB onchain budget makes a link of roughly 3–8 KB.
 
-## Minting onchain with Transient Labs
+## Minting onchain
 
-The **Mint onchain** section at the bottom builds a token URI that follows the [Transient Labs onchain art guide](https://docs.transientlabs.xyz/integrations/onchain-art) and [metadata structure](https://docs.transientlabs.xyz/integrations/metadata-structure):
+The **Mint onchain** section has a button per platform. Pick one and it expands into a guided flow. The 24 KB meter under the canvas switches to that platform's budget, and drawing is blocked at the limit.
 
-- The SVG is embedded as `data:image/svg+xml;base64,…` in the `image` field.
-- `name`, `description`, `attributes` (wiggle, speed, frames, layers, strokes), `media` (size, dimensions, mime type) and `image_sha256` are filled in for you.
-- The whole metadata object is wrapped as `data:application/json;base64,…` — that string is the token URI.
-- The meter shows the token URI's size against the 24 KB limit. When a stroke would cross it, the canvas flashes red, the stroke is rejected, and drawing is blocked until you undo, lower **Frames**, or press **Fit to 24 KB**, which re‑simplifies your strokes (and drops to 2 frames if it must) until the token fits. Fit can be undone until you draw again.
-- Paths are stored as compact relative coordinates and strokes are simplified with Douglas‑Peucker as you draw, so a typical drawing is several times smaller than a naive export.
+**Transient Labs** counts the whole base64 token URI against 24 KB. The flow builds metadata per the [Transient Labs onchain art guide](https://docs.transientlabs.xyz/integrations/onchain-art) and [metadata structure](https://docs.transientlabs.xyz/integrations/metadata-structure): the SVG embedded as `data:image/svg+xml;base64,…` in `image`, plus `name`, `description`, `attributes`, `media` and `image_sha256`, all wrapped as `data:application/json;base64,…`. **Copy token URI** puts that string on your clipboard to paste into Transient Labs Studio.
 
-**Copy token URI** puts the finished string on your clipboard to paste into the mint form. **Download token JSON** saves the unwrapped metadata if you'd rather inspect or encode it yourself.
+**ABX (Art Blocks)** counts the raw SVG against 24 KB, so roughly 1.8× more art fits. ABX deploys from the command line with your browser wallet ([deploy guide](https://docs.abx.io/docs/using-abx/guides/deploy-a-digital-asset)). The flow takes a symbol and network, then gives you a ready‑to‑paste dry‑run command, the real `--sign` command, and a prefilled prompt for a coding agent using the ABX skill. Base Sepolia is the free testnet; Base is production beta. ABX is prerelease, so check `abx deploy --help` if a flag has moved.
+
+When over budget, **Fit to 24 KB** re‑simplifies strokes (and drops frames if it must) until the piece fits the selected platform. Fit can be undone until you draw again.
 
 ## How the export works
 
