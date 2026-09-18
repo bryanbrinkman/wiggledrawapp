@@ -51,7 +51,7 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
 .spacer{flex:1}
 main{flex:1;display:flex;flex-direction:column;min-height:0}
 .work,.side{display:contents}
-.side > *{order:3} .side > .tools{order:0} .stage{order:1} .viewbar{order:2}
+.side > *{order:3} .side > .tools,.side > .sec-tools{order:0} .stage{order:1} .status{order:1} .viewbar{order:2}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0}
 .viewbar{display:none}
 .fs{font-size:18px;padding:4px 10px;line-height:1}
@@ -60,12 +60,13 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
 @media (min-width:960px) and (min-aspect-ratio:1/1){
   main{flex-direction:row;align-items:stretch;gap:0}
   .work{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
-  .side{display:flex;flex-direction:column;gap:8px;width:min(440px,42vw);overflow:auto;padding:0 8px 10px 0;flex:none}
+  .side{display:flex;flex-direction:column;gap:5px;width:min(440px,42vw);overflow:auto;padding:0 8px 10px 0;flex:none}
   .side > *{order:0}
   .side .bar{margin:0}
   .side .export{margin:0}
   .view .side{display:none}
   .view .work .viewbar{margin:0 8px 10px}
+  .side .export{margin:0}
 }
 .view .bar:not(.viewbar),.view .export{display:none}
 .view .viewbar{display:flex;margin:0 8px 10px}
@@ -92,13 +93,14 @@ input[type=color]{width:34px;height:32px;border:2px solid var(--chrome-edge);bac
 .export .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .primary{background:var(--accent);color:#fff;border-color:#8a2812;font-weight:600}
 .stat{font-size:13px;color:#dff3f2}
+.layer .eye{opacity:.9}
 textarea{width:100%;height:120px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge);padding:6px;resize:vertical;display:none;-webkit-user-select:text;user-select:text}
 textarea.open{display:block}
 .toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#161616;color:#fbfaf3;padding:8px 14px;border:2px solid var(--accent);opacity:0;pointer-events:none;transition:opacity .2s;font-size:14px;max-width:90vw}
 .toast.show{opacity:1}
 select{font:inherit;font-size:14px;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge);padding:6px;min-height:36px}
 .layers{display:flex;gap:4px;flex-wrap:wrap;align-items:center;flex:1}
-.layer{display:flex;align-items:center;gap:6px;padding:4px 8px;min-height:36px;font-size:14px}
+.layer{display:flex;align-items:center;gap:6px;padding:4px 8px;min-height:36px;font-size:14px;white-space:nowrap}
 .layer[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
 .layer .eye{opacity:.9}
 .layer[data-hidden="1"]{opacity:.5;text-decoration:line-through}
@@ -107,11 +109,27 @@ input[type=file]{display:none}
 .field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);flex:1;min-width:140px}
 .field input[type=text]{flex:1;min-width:0;font:inherit;font-size:14px;padding:6px 8px;min-height:36px;border:2px solid var(--chrome-edge);background:var(--paper);color:#161616;-webkit-user-select:text;user-select:text}
 .budget{font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;white-space:nowrap}
-.budget i{display:inline-block;width:80px;height:10px;border:2px solid var(--chrome-edge);background:var(--paper);position:relative}
+.budget i{display:inline-block;width:110px;height:10px;border:2px solid var(--chrome-edge);background:var(--paper);position:relative}
 .budget i b{position:absolute;inset:0;width:var(--p,0%);background:#2fb36a}
 .budget[data-over="1"] i b{background:var(--accent)}
 .budget[data-over="1"]{color:var(--accent);font-weight:600}
-.export h2{font-size:14px;font-weight:600;color:#dff3f2;margin-top:4px}
+.sec{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#cfe9e8;margin:4px 8px -2px}
+.sec .dim{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8}
+.side .sec{margin:8px 0 0}
+.side .sec:first-child{margin-top:0}
+.side .sec + *{margin-top:0}
+.status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 8px 8px;padding:6px 8px;background:var(--chrome);border:2px solid var(--chrome-edge);box-shadow:var(--shadow);font-size:13px}
+.status .stat{color:var(--muted)}
+.status #fit{display:none}
+.status[data-over="1"] #fit{display:inline-block;background:var(--accent);color:#fff;border-color:#8a2812}
+.view .status{display:none}
+button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shadow)}
+.layer .eye{opacity:.9;cursor:pointer;padding:0 2px}
+.layer .eye:hover{color:var(--accent)}
+.dlg ul{list-style:none;margin:0 0 12px;columns:2;column-gap:18px;font-size:14px}
+.dlg li{display:flex;justify-content:space-between;gap:10px;padding:2px 0;break-inside:avoid}
+.dlg kbd{font:inherit;font-size:13px;background:var(--paper);color:#161616;border:1px solid var(--chrome-edge);padding:0 5px;white-space:nowrap}
+.dlg .wide{max-width:520px}
 .export .hint{font-size:12px;color:#cfe9e8}
 .export .hint a{color:#fff}
 .veil{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:9}
@@ -130,6 +148,12 @@ input[type=file]{display:none}
 <main>
 <section class="work">
 <div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas></div>
+<div class="status" id="status" aria-live="polite">
+  <span class="budget" id="budget" title="Onchain token URI size — Transient Labs requires under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
+  <span class="stat" id="stat">0 strokes</span>
+  <span class="spacer"></span>
+  <button class="small" id="fit" title="Simplify strokes (then reduce frames) until the token URI is under 24 KB">Fit to 24 KB</button>
+</div>
 
 <div class="bar viewbar" aria-label="Shared drawing">
   <span class="title" id="vtitle"></span>
@@ -143,80 +167,96 @@ input[type=file]{display:none}
 </section>
 
 <aside class="side">
+<h2 class="sec sec-tools">Tools</h2>
 <div class="bar tools" role="toolbar" aria-label="Tools">
-  <button class="tool" data-tool="pen" aria-pressed="true" title="Pencil"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>
-  <button class="tool" data-tool="line" aria-pressed="false" title="Line"><svg viewBox="0 0 24 24"><path d="M4 20L20 4"/></svg></button>
-  <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg></button>
-  <button class="tool" data-tool="ellipse" aria-pressed="false" title="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
-  <button class="tool" data-tool="eraser" aria-pressed="false" title="Eraser"><svg viewBox="0 0 24 24"><path d="M3 15l9-9 7 7-6 6H8z M8 19h12"/></svg></button>
-  <button class="tool" data-tool="move" aria-pressed="false" title="Move layer: drag, or arrow keys (Shift = 10 px)"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3m3-3l3 3M12 21l-3-3m3 3l3-3M3 12l3-3m-3 3l3 3M21 12l-3-3m3 3l-3 3"/></svg></button>
+  <button class="tool" data-tool="pen" aria-pressed="true" title="Pencil (P)"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>
+  <button class="tool" data-tool="line" aria-pressed="false" title="Line (L)"><svg viewBox="0 0 24 24"><path d="M4 20L20 4"/></svg></button>
+  <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle (R)"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg></button>
+  <button class="tool" data-tool="ellipse" aria-pressed="false" title="Ellipse (O)"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
+  <button class="tool" data-tool="eraser" aria-pressed="false" title="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M3 15l9-9 7 7-6 6H8z M8 19h12"/></svg></button>
+  <button class="tool" data-tool="move" aria-pressed="false" title="Move layer (V): drag, or arrow keys (Shift = 10 px)"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3m3-3l3 3M12 21l-3-3m3 3l3-3M3 12l3-3m-3 3l3 3M21 12l-3-3m3 3l-3 3"/></svg></button>
   <span class="spacer"></span>
-  <button id="undo" title="Undo">Undo</button>
-  <button id="redo" title="Redo">Redo</button>
-  <button id="clear" title="Clear this layer">Clear layer</button>
+  <button id="undo" title="Undo (Ctrl/⌘ Z)">Undo</button>
+  <button id="redo" title="Redo (Shift Ctrl/⌘ Z)">Redo</button>
+  <button id="help" class="fs" title="Keyboard shortcuts (?)">?</button>
   <button id="fs" class="fs" title="Full screen (F)">⛶</button>
 </div>
 
+<h2 class="sec">Layers</h2>
 <div class="bar" aria-label="Layers">
   <div class="layers" id="layers"></div>
-  <button class="small" id="addLayer" title="Add layer">+ Layer</button>
-  <button class="small" id="toggleLayer" title="Show or hide layer">Hide</button>
+  <button class="small" id="addLayer" title="Add a layer above the selected one">+ Layer</button>
+  <button class="small" id="toggleLayer" title="Show or hide the selected layer">Hide</button>
   <button class="small" id="layerUp" title="Move layer up">▲</button>
   <button class="small" id="layerDown" title="Move layer down">▼</button>
   <button class="small" id="renameLayer" title="Rename layer">Rename</button>
-  <button class="small" id="delLayer" title="Delete layer">Delete</button>
+  <button class="small" id="clear" title="Remove every stroke on the selected layer">Clear</button>
+  <button class="small" id="delLayer" title="Delete the selected layer">Delete</button>
 </div>
 
+<h2 class="sec">Color &amp; brush</h2>
 <div class="bar">
   <div class="palette" id="palette"></div>
   <input type="color" id="custom" value="#161616" title="Custom color">
   <span class="spacer"></span>
-  <label class="sl">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
+  <label class="sl" title="Brush size ( [ and ] )">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
 </div>
 
+<h2 class="sec">Wiggle</h2>
 <div class="bar">
-  <label class="sl">Wiggle <input type="range" id="amp" min="0" max="8" step="0.5" value="2"><output id="ampOut">2</output></label>
-  <label class="sl">Speed <input type="range" id="fps" min="2" max="16" value="8"><output id="fpsOut">8</output></label>
-  <label class="sl">Frames <input type="range" id="frames" min="2" max="5" value="3"><output id="framesOut">3</output></label>
-  <button id="play" aria-pressed="true">Pause</button>
+  <label class="sl" title="How far each point jitters between frames">Amount <input type="range" id="amp" min="0" max="8" step="0.5" value="2"><output id="ampOut">2</output></label>
+  <label class="sl" title="Frames per second">Speed <input type="range" id="fps" min="2" max="16" value="8"><output id="fpsOut">8</output></label>
+  <label class="sl" title="How many jittered copies cycle. Fewer frames = smaller file">Frames <input type="range" id="frames" min="2" max="5" value="3"><output id="framesOut">3</output></label>
   <span class="spacer"></span>
-  <label class="sl">Paper <input type="color" id="bg" value="#fbfaf3"></label>
-  <select id="dims" title="Canvas size">
+  <button id="play" aria-pressed="true" title="Play / pause the preview (Space)">Pause</button>
+</div>
+
+<h2 class="sec">Canvas</h2>
+<div class="bar">
+  <label class="sl">Paper <input type="color" id="bg" value="#fbfaf3" title="Background colour"></label>
+  <label class="sl">Size <select id="dims" title="Canvas size (changing it clears the drawing)">
     <option value="512,512">512 × 512</option>
     <option value="640,480">640 × 480</option>
     <option value="480,640">480 × 640</option>
     <option value="1000,1000">1000 × 1000</option>
-  </select>
+  </select></label>
 </div>
 
+<h2 class="sec">Project</h2>
 <div class="export">
   <div class="row">
-    <button id="newProj">New</button>
-    <button id="openProj">Open project</button>
-    <button id="saveProj">Save project</button>
+    <label class="field">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
+  </div>
+  <div class="row">
+    <button id="newProj" title="Start a blank drawing">New</button>
+    <button id="openProj" title="Open a saved .chainpainter.json file">Open…</button>
+    <button id="saveProj" title="Save the project as a file (Ctrl/⌘ S)">Save…</button>
     <input type="file" id="fileIn" accept=".json,application/json">
-    <span class="spacer"></span>
-    <button class="primary" id="download">Download SVG</button>
-    <button id="copy">Copy SVG</button>
+  </div>
+</div>
+
+<h2 class="sec">Export &amp; share</h2>
+<div class="export">
+  <div class="row">
+    <button class="primary" id="download" title="Download the animated SVG">Download SVG</button>
+    <button id="copy" title="Copy the SVG source">Copy SVG</button>
     <button id="share" title="Copy a link that plays this drawing — the whole project travels in the link, nothing is uploaded">Copy link</button>
     <button id="show">Show code</button>
-    <span class="stat" id="stat">0 strokes · 0 bytes</span>
   </div>
   <textarea id="code" readonly spellcheck="false" aria-label="SVG source"></textarea>
-  <h2>Mint onchain (Transient Labs)</h2>
+</div>
+
+<h2 class="sec">Mint onchain <span class="dim">Transient Labs</span></h2>
+<div class="export">
   <div class="row">
-    <label class="field">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
     <label class="field">Description <input type="text" id="tokDesc" maxlength="500" placeholder="Drawn with ChainPainter"></label>
   </div>
   <div class="row">
-    <button class="primary" id="copyUri">Copy token URI</button>
+    <button class="primary" id="copyUri" title="Copy the base64 token URI to paste when minting">Copy token URI</button>
     <button id="dlMeta">Download token JSON</button>
     <button id="showMeta">Show token JSON</button>
-    <button id="fit" title="Simplify strokes (and drop to 2 frames if needed) until the token URI is under 24 KB">Fit to 24 KB</button>
-    <span class="spacer"></span>
-    <span class="budget" id="budget" title="Transient Labs onchain art must stay under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
   </div>
-  <p class="hint">Token URI is <code>data:application/json;base64,…</code> with the SVG embedded as a base64 data URI, following the <a href="https://docs.transientlabs.xyz/integrations/onchain-art" target="_blank" rel="noopener">Transient Labs onchain art spec</a>. Paste it as the token URI when minting.</p>
+  <p class="hint">Token URI is <code>data:application/json;base64,…</code> with the SVG embedded as a base64 data URI, following the <a href="https://docs.transientlabs.xyz/integrations/onchain-art" target="_blank" rel="noopener">Transient Labs onchain art spec</a>. It must stay under 24 KB — the meter under the canvas tracks it.</p>
   <textarea id="meta" readonly spellcheck="false" aria-label="Token metadata JSON"></textarea>
 </div>
 </aside>
@@ -239,6 +279,7 @@ const S = {
 const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00','#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
 const $ = id => document.getElementById(id);
 const TAGLINE = 'draws SVG that wobbles · exports on-chain ready';
+let viewing = false; // true while showing a shared link (read-only)
 function newLayer(name){ return { name, visible: true, strokes: [], ops: [], redo: [] }; }
 // Undo history per layer: an op is either a stroke (always the last one in L.strokes) or a move of the whole layer.
 function translateLayer(L, dx, dy){ if (dx || dy) L.strokes.forEach(st => { st.pts = st.pts.map(([x, y]) => [x + dx, y + dy]); }); }
@@ -389,6 +430,12 @@ function draw(){
     ctx.drawImage(o, 0, 0);
   });
   if (flashOn){ ctx.fillStyle = 'rgba(255,60,40,.55)'; ctx.fillRect(0, 0, cv.width, cv.height); }
+  if (!viewing && !live && !totalStrokes()){
+    ctx.save(); ctx.scale(dpr, dpr); ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = Math.round(S.w / 26) + 'px "Pixelify Sans", monospace';
+    ctx.fillText('draw here', S.w / 2, S.h / 2 - S.w / 40); ctx.font = Math.round(S.w / 40) + 'px "Pixelify Sans", monospace';
+    ctx.fillText('press ? for shortcuts', S.w / 2, S.h / 2 + S.w / 40); ctx.restore();
+  }
 }
 let flashOn = false;
 function flashCanvas(){
@@ -490,6 +537,19 @@ function dialog(msg, withInput, def){
   });
 }
 const ask = msg => dialog(msg, false);
+function showHelp(){
+  const rows = [['P L R O E V', 'Pencil, line, rectangle, ellipse, eraser, move'], ['[ ]', 'Brush size'], ['Ctrl/⌘ Z', 'Undo'], ['Shift Ctrl/⌘ Z', 'Redo'],
+    ['Arrows', 'Nudge layer (Move tool), Shift = 10 px'], ['Space', 'Play / pause'], ['Ctrl/⌘ S', 'Save project'], ['F', 'Full screen'], ['?', 'This list']];
+  const v = $('veil'), box = v.firstElementChild, msg = $('dlgMsg');
+  box.classList.add('wide'); $('dlgIn').style.display = 'none'; $('dlgNo').style.display = 'none';
+  msg.innerHTML = '<strong>Keyboard shortcuts</strong><ul>' + rows.map(([k, t]) => `<li><span>${t}</span><kbd>${k}</kbd></li>`).join('') + '</ul>';
+  v.classList.add('open');
+  const done = () => { v.classList.remove('open'); box.classList.remove('wide'); $('dlgNo').style.display = ''; msg.innerHTML = ''; $('dlgOk').onclick = null; v.onclick = null; window.removeEventListener('keydown', esc, true); };
+  const esc = e => { if (e.key === 'Escape'){ e.stopPropagation(); done(); } };
+  $('dlgOk').onclick = done; v.onclick = e => { if (e.target === v) done(); }; window.addEventListener('keydown', esc, true);
+  setTimeout(() => $('dlgOk').focus(), 0);
+}
+$('help').addEventListener('click', showHelp);
 const askText = (msg, def) => dialog(msg, true, def);
 
 // ---------- tool controls ----------
@@ -539,11 +599,18 @@ window.addEventListener('keydown', e => {
     moveLayer(e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0, e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0);
     return;
   }
+  const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+  const HOT = { p: 'pen', l: 'line', r: 'rect', o: 'ellipse', e: 'eraser', v: 'move' };
+  if (plain && HOT[e.key.toLowerCase()]){ e.preventDefault(); document.querySelector(`.tool[data-tool="${HOT[e.key.toLowerCase()]}"]`).click(); return; }
+  if (plain && (e.key === '[' || e.key === ']')){ e.preventDefault(); S.size = Math.max(1, Math.min(40, S.size + (e.key === ']' ? 1 : -1))); $('size').value = S.size; $('sizeOut').value = S.size; return; }
+  if (plain && e.key === ' ' && e.target.tagName !== 'BUTTON'){ e.preventDefault(); $('play').click(); return; }
+  if (plain && e.key === '?'){ e.preventDefault(); showHelp(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); (e.shiftKey ? $('redo') : $('undo')).click(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); $('saveProj').click(); }
 });
 if (matchMedia('(prefers-reduced-motion: reduce)').matches){ S.playing = false; $('play').textContent = 'Play'; $('play').setAttribute('aria-pressed', 'false'); }
 
+function syncHistoryButtons(){ const L = layer(); if (!L) return; $('undo').disabled = !L.ops.length; $('redo').disabled = !L.redo.length; }
 // ---------- layers ----------
 function renderLayers(){
   const box = $('layers'); box.innerHTML = '';
@@ -555,7 +622,9 @@ function renderLayers(){
     b.dataset.hidden = L.visible ? '0' : '1';
     b.innerHTML = `<span class="eye">${L.visible ? '●' : '○'}</span><span></span>`;
     b.lastChild.textContent = L.name;
-    b.addEventListener('click', () => { S.active = i; renderLayers(); });
+    b.addEventListener('click', () => { S.active = i; renderLayers(); syncHistoryButtons(); });
+    b.firstChild.title = L.visible ? 'Hide layer' : 'Show layer';
+    b.firstChild.addEventListener('click', e => { e.stopPropagation(); L.visible = !L.visible; if (i === S.active) $('toggleLayer').textContent = L.visible ? 'Hide' : 'Show'; renderLayers(); invalidate(); draw(); });
     box.appendChild(b);
   }
   $('toggleLayer').textContent = layer().visible ? 'Hide' : 'Show';
@@ -670,7 +739,8 @@ function toSVG(){
 function updateStat(){
   const svg = toSVG();
   const bytes = new TextEncoder().encode(svg).length, n = totalStrokes();
-  $('stat').textContent = `${n} stroke${n === 1 ? '' : 's'} · ${S.layers.length} layer${S.layers.length === 1 ? '' : 's'} · ${bytes >= 1024 ? (bytes / 1024).toFixed(1) + ' KB' : bytes + ' bytes'}`;
+  $('stat').textContent = `${n} stroke${n === 1 ? '' : 's'} · ${S.layers.length} layer${S.layers.length === 1 ? '' : 's'} · SVG ${bytes >= 1024 ? (bytes / 1024).toFixed(1) + ' KB' : bytes + ' bytes'}`;
+  syncHistoryButtons();
   if ($('code').classList.contains('open')) $('code').value = svg;
   updateBudget(svg);
 }
@@ -734,13 +804,13 @@ function fmtKB(n){ return (n / 1024).toFixed(1) + ' KB'; }
 const budgetBytes = svg => tokenURI(metadata(svg || toSVG(), '0'.repeat(64))).length;
 function updateBudget(svg){
   const n = budgetBytes(svg);
-  const el = $('budget'); el.dataset.over = n > BUDGET ? '1' : '0'; cv.classList.toggle('over', n > BUDGET);
+  const el = $('budget'); el.dataset.over = n > BUDGET ? '1' : '0'; $('status').dataset.over = el.dataset.over; cv.classList.toggle('over', n > BUDGET);
   el.querySelector('b').style.setProperty('--p', Math.min(100, n / BUDGET * 100) + '%');
-  $('budgetOut').textContent = fmtKB(n) + ' / 24 KB' + (n > BUDGET ? ' · over budget' : '');
+  $('budgetOut').textContent = fmtKB(n) + ' / 24 KB onchain' + (n > BUDGET ? ' · over' : '');
   if ($('meta').classList.contains('open')) buildToken().then(t => { $('meta').value = JSON.stringify(t.meta, null, 2); });
 }
 function overBudget(n){ if (n > BUDGET){ toast('Token URI is ' + fmtKB(n) + ' — trim strokes, frames or layers to get under 24 KB'); return true; } return false; }
-function renderFitBtn(){ $('fit').textContent = fitBackup ? 'Undo fit' : 'Fit to 24 KB'; }
+function renderFitBtn(){ $('fit').textContent = fitBackup ? 'Undo fit' : 'Fit to 24 KB'; $('fit').style.display = fitBackup ? 'inline-block' : ''; }
 function snapshot(){ return JSON.stringify({ frames: S.frames, layers: S.layers.map(L => L.strokes) }); }
 function restoreSnapshot(json){
   const o = JSON.parse(json); S.frames = o.frames; S.layers.forEach((L, i) => { L.strokes = o.layers[i] || L.strokes; });
@@ -790,7 +860,6 @@ $('dlMeta').addEventListener('click', async () => {
 // ---------- share links ----------
 // The whole project is deflated and base64url-encoded into the URL fragment: #v=1.<data> (1 = deflate-raw,
 // 0 = plain). Nothing leaves the browser; the link doubles as a backup and can be remixed by anyone.
-let viewing = false;
 const b64u = {
   enc: bytes => { let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
   dec: str => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
