@@ -81,6 +81,7 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
 }
 canvas#c{background:var(--paper);touch-action:none;max-width:100%;max-height:100%;border:2px solid var(--chrome-edge);box-shadow:4px 4px 0 var(--desk-deep);image-rendering:auto;cursor:crosshair}
 canvas#c[data-tool="move"]{cursor:move}
+canvas#c[data-tool="fill"]{cursor:cell}
 canvas#c.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),4px 4px 0 var(--desk-deep);cursor:not-allowed}
 .palette{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .swatch{width:26px;height:26px;border:2px solid var(--chrome-edge);cursor:pointer;padding:0;min-height:0;box-shadow:none}
@@ -178,6 +179,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle (R)"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg></button>
   <button class="tool" data-tool="ellipse" aria-pressed="false" title="Ellipse (O)"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
   <button class="tool" data-tool="eraser" aria-pressed="false" title="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M3 15l9-9 7 7-6 6H8z M8 19h12"/></svg></button>
+  <button class="tool" data-tool="fill" aria-pressed="false" title="Fill (G): tap an enclosed area to fill it; tap a fill to recolour it"><svg viewBox="0 0 24 24"><path d="M5 12l7-7 7 7-7 7z M12 5V3 M19 12c0 0 2 2.5 2 4a2 2 0 0 1-4 0c0-1.5 2-4 2-4z M5 12h14"/></svg></button>
   <button class="tool" data-tool="move" aria-pressed="false" title="Move layer (V): drag, or arrow keys (Shift = 10 px)"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3m3-3l3 3M12 21l-3-3m3 3l3-3M3 12l3-3m-3 3l3 3M21 12l-3-3m3 3l-3 3"/></svg></button>
   <span class="spacer"></span>
   <button id="undo" title="Undo (Ctrl/⌘ Z)">Undo</button>
@@ -288,16 +290,24 @@ const TAGLINE = 'draws SVG that wobbles · exports on-chain ready';
 let viewing = false; // true while showing a shared link (read-only)
 function newLayer(name){ return { name, visible: true, strokes: [], ops: [], redo: [] }; }
 // Undo history per layer: an op is either a stroke (always the last one in L.strokes) or a move of the whole layer.
-function translateLayer(L, dx, dy){ if (dx || dy) L.strokes.forEach(st => { st.pts = st.pts.map(([x, y]) => [x + dx, y + dy]); }); }
+function translateLayer(L, dx, dy){
+  if (!dx && !dy) return;
+  const mv = pts => pts.map(([x, y]) => [x + dx, y + dy]);
+  L.strokes.forEach(st => { st.pts = mv(st.pts); if (st.holes) st.holes = st.holes.map(mv); });
+}
 function undo(L){
   const op = L.ops.pop(); if (!op) return;
   if (op.t === 'stroke'){ const st = L.strokes.pop(); if (st) op.st = st; }
+  else if (op.t === 'insert') op.st = L.strokes.splice(op.idx, 1)[0];
+  else if (op.t === 'recolor') L.strokes[op.idx].color = op.from;
   else translateLayer(L, -op.dx, -op.dy);
   L.redo.push(op);
 }
 function redo(L){
   const op = L.redo.pop(); if (!op) return;
   if (op.t === 'stroke'){ if (op.st) L.strokes.push(op.st); }
+  else if (op.t === 'insert'){ if (op.st) L.strokes.splice(op.idx, 0, op.st); }
+  else if (op.t === 'recolor') L.strokes[op.idx].color = op.to;
   else translateLayer(L, op.dx, op.dy);
   L.ops.push(op);
 }
@@ -321,13 +331,16 @@ function rand(seed){ // mulberry32
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
+// A fill is a closed polygon (st.pts) plus optional holes; every ring jitters like a stroke.
+const rings = st => st.fill ? [st.pts, ...(st.holes || [])] : [st.pts];
+const basePath = st => st.fill ? rings(st).map(rg => pathFrom(rg, true, false)).join('') : pathFrom(st.pts, st.closed, !st.sharp);
 function framePaths(st, key){
   const out = [];
   for (let f = 0; f < S.frames; f++){
     const r = rand(S.seed + key * 7919 + f * 104729);
     const a = S.amp;
-    const p = st.pts.map(([x, y]) => [Math.round(x + (a ? (r() * 2 - 1) * a : 0)), Math.round(y + (a ? (r() * 2 - 1) * a : 0))]);
-    out.push(pathFrom(p, st.closed, !st.sharp));
+    const jit = pts => pts.map(([x, y]) => [Math.round(x + (a ? (r() * 2 - 1) * a : 0)), Math.round(y + (a ? (r() * 2 - 1) * a : 0))]);
+    out.push(st.fill ? rings(st).map(rg => pathFrom(jit(rg), true, false)).join('') : pathFrom(jit(st.pts), st.closed, !st.sharp));
   }
   return out;
 }
@@ -410,6 +423,10 @@ function buildCache(){
 }
 function paintStroke(c, st, path){
   c.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
+  if (st.fill){ // fill plus a thin same-colour stroke so no anti-aliased seam shows under the outline
+    c.fillStyle = st.color; c.fill(path, 'evenodd');
+    c.strokeStyle = st.color; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round'; c.stroke(path); return;
+  }
   c.strokeStyle = st.erase ? '#000' : st.color;
   c.lineWidth = st.size; c.lineCap = 'round'; c.lineJoin = 'round';
   c.stroke(path);
@@ -484,6 +501,106 @@ function syncFsButtons(){ const on = !!(document.fullscreenElement || document.w
 document.addEventListener('fullscreenchange', syncFsButtons); document.addEventListener('webkitfullscreenchange', syncFsButtons);
 window.addEventListener('resize', fitCanvas);
 
+// ---------- fill bucket ----------
+// Flood-fills the tapped region on a 1:1 raster of everything visible, traces the region's outline (and holes)
+// into polygons, simplifies them, and stores the result as a filled path beneath the strokes on the active layer.
+const FILL_EPS = 1;
+function boundaryMask(){
+  const W = S.w, H = S.h;
+  const m = document.createElement('canvas'); m.width = W; m.height = H; const mc = m.getContext('2d');
+  const t = document.createElement('canvas'); t.width = W; t.height = H; const tc = t.getContext('2d');
+  S.layers.forEach(L => {
+    if (!L.visible || !L.strokes.length) return;
+    tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, W, H);
+    for (const st of L.strokes) if (!st.fill) paintStroke(tc, st.erase ? st : { ...st, color: '#000' }, new Path2D(basePath(st)));
+    mc.globalCompositeOperation = 'source-over'; mc.drawImage(t, 0, 0);
+  });
+  const d = mc.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+  for (let i = 0; i < mask.length; i++) mask[i] = d[i * 4 + 3] >= 128 ? 1 : 0;
+  return mask;
+}
+function floodFill(mask, sx, sy){
+  const W = S.w, H = S.h, reg = new Uint8Array(W * H), stack = [sy * W + sx]; reg[stack[0]] = 1; let count = 1;
+  const push = j => { if (!reg[j] && !mask[j]){ reg[j] = 1; count++; stack.push(j); } };
+  while (stack.length){
+    const i = stack.pop(), x = i % W, y = (i - x) / W;
+    if (x > 0) push(i - 1); if (x < W - 1) push(i + 1); if (y > 0) push(i - W); if (y < H - 1) push(i + W);
+  }
+  reg.count = count; return reg;
+}
+// Boundary edges of the region, walked clockwise (region on the right), linked into closed loops.
+function traceRegion(reg){
+  const W = S.w, H = S.h, VW = W + 1, edges = new Map();
+  const add = (x0, y0, x1, y1) => { const k = y0 * VW + x0, e = y1 * VW + x1, a = edges.get(k); if (a) a.push(e); else edges.set(k, [e]); };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
+    if (!reg[y * W + x]) continue;
+    if (y === 0 || !reg[(y - 1) * W + x]) add(x, y, x + 1, y);
+    if (x === W - 1 || !reg[y * W + x + 1]) add(x + 1, y, x + 1, y + 1);
+    if (y === H - 1 || !reg[(y + 1) * W + x]) add(x + 1, y + 1, x, y + 1);
+    if (x === 0 || !reg[y * W + x - 1]) add(x, y + 1, x, y);
+  }
+  const loops = [];
+  for (const [k0, ends0] of edges){
+    while (ends0.length){
+      const loop = []; let k = k0, dx = 0, dy = 0;
+      for (;;){
+        const ends = edges.get(k); if (!ends || !ends.length) break;
+        const x = k % VW, y = (k - x) / VW;
+        let pick = 0;
+        if (ends.length > 1 && (dx || dy)){ // at a pinch, prefer the tightest (right) turn
+          let best = -Infinity;
+          ends.forEach((e, i) => { const ex = e % VW, ey = (e - ex) / VW, c = dx * (ey - y) - dy * (ex - x); if (c > best){ best = c; pick = i; } });
+        }
+        const e = ends.splice(pick, 1)[0], ex = e % VW, ey = (e - ex) / VW;
+        loop.push([x, y]); dx = ex - x; dy = ey - y; k = e;
+        if (k === k0) break;
+      }
+      if (loop.length >= 3) loops.push(loop);
+    }
+  }
+  return loops;
+}
+function simplifyClosed(pts, eps){
+  if (pts.length < 4) return pts;
+  let far = 0, fd = -1;
+  for (let i = 1; i < pts.length; i++){ const d = Math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1]); if (d > fd){ fd = d; far = i; } }
+  const a = simplify(pts.slice(0, far + 1), eps), b = simplify(pts.slice(far).concat([pts[0]]), eps);
+  return a.slice(0, -1).concat(b.slice(0, -1));
+}
+const ringArea = p => { let a = 0; for (let i = 0, n = p.length; i < n; i++){ const [x0, y0] = p[i], [x1, y1] = p[(i + 1) % n]; a += x0 * y1 - x1 * y0; } return a / 2; };
+const ringLength = p => { let l = 0; for (let i = 0, n = p.length; i < n; i++){ const [x0, y0] = p[i], [x1, y1] = p[(i + 1) % n]; l += Math.hypot(x1 - x0, y1 - y0); } return l; };
+const hitCtx = document.createElement('canvas').getContext('2d');
+const hitFill = (st, p) => hitCtx.isPointInPath(new Path2D(basePath(st)), p[0], p[1], 'evenodd');
+function bucketAt(p){
+  const L = layer(), x = Math.floor(p[0]), y = Math.floor(p[1]);
+  if (x < 0 || y < 0 || x >= S.w || y >= S.h) return;
+  const mask = boundaryMask();
+  if (mask[y * S.w + x]){ toast('Tap inside an empty area to fill it'); return; }
+  const reg = floodFill(mask, x, y);
+  // Tapping an existing fill whose region is (still) this whole area recolours it instead of stacking a new fill.
+  // If new strokes have since carved a smaller region out of it, a new fill is made for just that region.
+  for (let i = L.strokes.length - 1; i >= 0; i--){
+    const st = L.strokes[i];
+    if (!st.fill || !hitFill(st, p)) continue;
+    // Raster vs polygon differ by about half a pixel along the perimeter; anything carved out beyond that is real.
+    const all = rings(st), fillArea = Math.abs(ringArea(st.pts)) - all.slice(1).reduce((a, h) => a + Math.abs(ringArea(h)), 0);
+    const tol = 0.6 * all.reduce((a, r) => a + ringLength(r), 0) + 32;
+    if (fillArea - reg.count > tol) break;
+    if (st.color === S.color){ toast('Already that colour'); return; }
+    L.ops.push({ t: 'recolor', idx: i, from: st.color, to: S.color }); L.redo = []; st.color = S.color; invalidate(); draw(); return;
+  }
+  const loops = traceRegion(reg).map(l => simplifyClosed(l, FILL_EPS)).filter(l => l.length >= 3 && Math.abs(ringArea(l)) >= 4);
+  if (!loops.length) return;
+  loops.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)));
+  const st = { color: S.color, size: 2, fill: true, pts: loops[0], closed: true, sharp: true };
+  if (loops.length > 1) st.holes = loops.slice(1);
+  // Fills sit beneath this layer's strokes, above its earlier fills.
+  const first = L.strokes.findIndex(s => !s.fill), at = first < 0 ? L.strokes.length : first;
+  L.strokes.splice(at, 0, st);
+  if (budgetBytes() > BUDGET){ L.strokes.splice(at, 1); flashCanvas(); toast('That fill would go over 24 KB. ' + FULL_HINT); return; }
+  L.ops.push({ t: 'insert', idx: at }); L.redo = []; invalidate(); draw();
+}
+
 // ---------- input ----------
 let drawing = false, start = null, raw = [], moving = false, moved = [0, 0];
 function pos(e){
@@ -498,6 +615,7 @@ cv.addEventListener('pointerdown', e => {
     e.preventDefault(); cv.setPointerCapture(e.pointerId); moving = true; start = pos(e); moved = [0, 0]; return;
   }
   if (budgetBytes() > BUDGET){ e.preventDefault(); flashCanvas(); toast(FULL_MSG); return; }
+  if (S.tool === 'fill'){ e.preventDefault(); bucketAt(pos(e)); return; }
   e.preventDefault(); cv.setPointerCapture(e.pointerId);
   drawing = true; start = pos(e); raw = [start];
   live = { color: S.color, size: S.size, erase: S.tool === 'eraser', pts: [start], closed: false, sharp: false };
@@ -571,7 +689,7 @@ function copyDialog(text, label){
   setTimeout(() => { inp.focus(); try { inp.setSelectionRange(0, text.length); } catch {} }, 0);
 }
 function showHelp(){
-  const rows = [['P L R O E V', 'Pencil, line, rectangle, ellipse, eraser, move'], ['[ ]', 'Brush size'], ['Ctrl/⌘ Z', 'Undo'], ['Shift Ctrl/⌘ Z', 'Redo'],
+  const rows = [['P L R O E G V', 'Pencil, line, rectangle, ellipse, eraser, fill, move'], ['[ ]', 'Brush size'], ['Ctrl/⌘ Z', 'Undo'], ['Shift Ctrl/⌘ Z', 'Redo'],
     ['Arrows', 'Nudge layer (Move tool), Shift = 10 px'], ['Space', 'Play / pause'], ['Ctrl/⌘ S', 'Save project'], ['F', 'Full screen'], ['?', 'This list']];
   const v = $('veil'), box = v.firstElementChild, msg = $('dlgMsg');
   box.classList.add('wide'); $('dlgIn').style.display = 'none'; $('dlgNo').style.display = 'none';
@@ -641,7 +759,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
-  const HOT = { p: 'pen', l: 'line', r: 'rect', o: 'ellipse', e: 'eraser', v: 'move' };
+  const HOT = { p: 'pen', l: 'line', r: 'rect', o: 'ellipse', e: 'eraser', g: 'fill', v: 'move' };
   if (plain && HOT[e.key.toLowerCase()]){ e.preventDefault(); document.querySelector(`.tool[data-tool="${HOT[e.key.toLowerCase()]}"]`).click(); return; }
   if (plain && (e.key === '[' || e.key === ']')){ e.preventDefault(); S.size = Math.max(1, Math.min(40, S.size + (e.key === ']' ? 1 : -1))); $('size').value = S.size; $('sizeOut').value = S.size; return; }
   if (plain && e.key === ' ' && e.target.tagName !== 'BUTTON'){ e.preventDefault(); $('play').click(); return; }
@@ -749,8 +867,12 @@ function toSVG(){
   function runs(items, colored){
     let out = '', cur = null;
     for (const { st, d } of items){
-      const key = (colored ? st.color : '') + '|' + st.size;
-      if (key !== cur){ if (cur !== null) out += '</g>'; out += `<g${colored ? ` stroke="${st.color}"` : ''} stroke-width="${st.size}">`; cur = key; }
+      const key = st.fill ? 'F' + st.color : (colored ? st.color : '') + '|' + st.size;
+      if (key !== cur){
+        if (cur !== null) out += '</g>';
+        out += st.fill ? `<g fill="${st.color}" fill-rule="evenodd" stroke="${st.color}" stroke-width="2">` : `<g${colored ? ` stroke="${st.color}"` : ''} stroke-width="${st.size}">`;
+        cur = key;
+      }
       out += `<path d="${d}"/>`;
     }
     return cur === null ? '' : out + '</g>';
@@ -861,13 +983,16 @@ async function fitToBudget(){
   if (before <= BUDGET){ toast('Already under 24 KB'); return; }
   if (!(await ask('Simplify strokes until the token URI is under 24 KB? You can undo this until you draw again.'))) return;
   const backup = snapshot();
-  const strokes = S.layers.flatMap(L => L.strokes.filter(st => !st.closed));
+  const strokes = S.layers.flatMap(L => L.strokes.filter(st => !st.closed || st.fill));
   // Gentle simplification first, then one frame at a time, then heavier simplification as a last resort.
   const steps = [2, 3, 4, 6, 'frame', 'frame', 'frame', 8, 12];
   let n = before;
   for (const step of steps){
     if (step === 'frame'){ if (S.frames <= 2) continue; S.frames--; $('frames').value = S.frames; $('framesOut').value = S.frames; }
-    else strokes.forEach(st => { st.pts = simplify(st.pts, step); });
+    else strokes.forEach(st => {
+      if (st.fill){ st.pts = simplifyClosed(st.pts, step); if (st.holes) st.holes = st.holes.map(h => simplifyClosed(h, step)).filter(h => h.length >= 3); }
+      else st.pts = simplify(st.pts, step);
+    });
     n = budgetBytes(); if (n <= BUDGET) break;
   }
   fitting = true; fitBackup = backup; invalidate(); fitting = false; renderFitBtn(); draw();
