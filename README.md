@@ -55,7 +55,7 @@ The **Mint onchain** section has a button per platform. Pick one and it expands 
 
 **Manifold** goes fully onchain through your own Manifold Creator contract instead of Studio's Arweave upload. The flow copies the same self‑contained token URI, then walks you through calling `mintBase(to, uri)` (or `setTokenURI`) on your contract from the block explorer's *Write as Proxy* tab as the owner. The meter counts the token URI against 24 KB as a gas guide: it warns when over but never blocks, since a bigger token simply costs more to write. Base is cheap; Ethereum mainnet is not.
 
-**Highlight** works the same way through a Highlight 1/1 contract, whose `tokenURI` returns the stored edition URI untouched: copy the token URI, then call `setEditionURI(0, uri)` (or `setTokenURIs` on a Series contract) from the block explorer as the owner, per [Highlight's storing SVGs onchain guide](https://support.highlight.xyz/knowledge-base/for-creators/generative-and-onchain-art-tools/storing-svgs-onchain). Same soft 24 KB gas guide as Manifold.
+**Highlight** works the same way through a Highlight 1/1 contract, whose `tokenURI` returns the stored edition URI untouched: copy the token URI, then call `setEditionURI(0, uri)` (or `setTokenURIs` on a Series contract) from the block explorer as the owner, per Highlight's “storing SVGs onchain” article in their [knowledge base](https://support.highlight.xyz/knowledge-base) and the [contract source](https://github.com/highlightxyz/hl-evm-contracts/blob/main/contracts/erc721/ERC721SingleEditionDFS.sol). Same soft 24 KB gas guide as Manifold.
 
 **Download PNG** in Export & share saves a 2048 px still of the first frame for posts and previews.
 
