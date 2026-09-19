@@ -55,7 +55,7 @@ The **Mint onchain** section has a button per platform. Pick one and it expands 
 
 **Manifold** goes fully onchain through your own Manifold Creator contract instead of Studio's Arweave upload. The flow copies the same self‑contained token URI, then walks you through calling `mintBase(to, uri)` (or `setTokenURI`) on your contract from the block explorer's *Write as Proxy* tab as the owner. The meter counts the token URI against 24 KB as a gas guide: it warns when over but never blocks, since a bigger token simply costs more to write. Base is cheap; Ethereum mainnet is not.
 
-**Download PNG** in Export & share saves a 2048 px still of the first frame for posts and previews.
+**Download PNG** in Export & share saves a 2048 px still of the first frame, and **Download GIF** saves a looping GIF of the wiggle at 2× (up to 1024 px) for posts and previews. Both are built in the browser with no dependencies.
 
 When over budget, **Fit to 24 KB** re‑simplifies strokes (and drops frames if it must) until the piece fits the selected platform. Fit can be undone until you draw again.
 

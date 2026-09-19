@@ -285,6 +285,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
     <button class="primary" id="download" title="Download the animated SVG">Download SVG</button>
     <button id="copy" title="Copy the SVG source">Copy SVG</button>
     <button id="dlPng" title="Save a 2048px PNG of the first frame, for posts and previews">Download PNG</button>
+    <button id="dlGif" title="Save a looping GIF of the wiggle, for posts and previews">Download GIF</button>
     <button id="share" title="Copy a link that plays this drawing — the whole project travels in the link, nothing is uploaded">Copy link</button>
     <button id="show">Show code</button>
   </div>
@@ -1207,6 +1208,92 @@ async function downloadPNG(){
   }, 'image/png');
 }
 $('dlPng').addEventListener('click', downloadPNG);
+$('dlGif').addEventListener('click', downloadGIF);
+// ---------- GIF export ----------
+// Renders every wiggle frame at 2× (longest side capped at 1024 px), quantises to a 256-colour palette
+// with median cut, LZW-encodes each frame and loops forever at the piece's speed. No dependencies.
+function renderFrameTo(f, k){
+  if (!cache) buildCache();
+  const W = Math.round(S.w * k), H = Math.round(S.h * k);
+  const out = document.createElement('canvas'); out.width = W; out.height = H; const oc = out.getContext('2d');
+  oc.fillStyle = S.bg; oc.fillRect(0, 0, W, H);
+  const lay = document.createElement('canvas'); lay.width = W; lay.height = H; const lc = lay.getContext('2d');
+  S.layers.forEach((L, li) => {
+    if (!L.visible || !L.strokes.length) return;
+    lc.setTransform(1, 0, 0, 1, 0, 0); lc.globalCompositeOperation = 'source-over'; lc.clearRect(0, 0, W, H); lc.scale(k, k);
+    for (const e of cache[li]) paintStroke(lc, e.st, e.paths[f % e.paths.length]);
+    oc.drawImage(lay, 0, 0);
+  });
+  return oc.getImageData(0, 0, W, H);
+}
+function medianCut(samples, maxColors){
+  // samples: flat [r,g,b,...]; returns array of [r,g,b]
+  let boxes = [Array.from({ length: samples.length / 3 }, (_, i) => i)];
+  const range = box => { let lo = [255, 255, 255], hi = [0, 0, 0]; for (const i of box) for (let c = 0; c < 3; c++){ const v = samples[i * 3 + c]; if (v < lo[c]) lo[c] = v; if (v > hi[c]) hi[c] = v; } return [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]]; };
+  while (boxes.length < maxColors){
+    let bi = -1, best = 0, bc = 0;
+    boxes.forEach((box, i) => { if (box.length < 2) return; const r = range(box); const m = Math.max(...r); if (m > best){ best = m; bi = i; bc = r.indexOf(m); } });
+    if (bi < 0 || best === 0) break;
+    const box = boxes[bi]; box.sort((a, b) => samples[a * 3 + bc] - samples[b * 3 + bc]);
+    const mid = box.length >> 1; boxes.splice(bi, 1, box.slice(0, mid), box.slice(mid));
+  }
+  return boxes.map(box => { let r = 0, g = 0, b = 0; for (const i of box){ r += samples[i * 3]; g += samples[i * 3 + 1]; b += samples[i * 3 + 2]; } const n = box.length || 1; return [Math.round(r / n), Math.round(g / n), Math.round(b / n)]; });
+}
+function lzwEncode(indices, minCodeSize, push){
+  const clear = 1 << minCodeSize, eoi = clear + 1;
+  let codeSize = minCodeSize + 1, next = eoi + 1, dict = new Map();
+  let acc = 0, nbits = 0, chunk = [], flushed = 0;
+  const emit = code => { acc |= code << nbits; nbits += codeSize; while (nbits >= 8){ chunk.push(acc & 255); acc >>>= 8; nbits -= 8; if (chunk.length === 255){ push(255); for (const b of chunk) push(b); chunk = []; } } };
+  emit(clear);
+  let prev = indices[0];
+  for (let i = 1; i < indices.length; i++){
+    const px = indices[i], key = (prev << 8) | px, hit = dict.get(key);
+    if (hit !== undefined){ prev = hit; continue; }
+    emit(prev);
+    if (next < 4096){ dict.set(key, next++); if (next - 1 === (1 << codeSize) && codeSize < 12) codeSize++; }
+    else { emit(clear); dict = new Map(); next = eoi + 1; codeSize = minCodeSize + 1; }
+    prev = px;
+  }
+  emit(prev); emit(eoi);
+  if (nbits > 0) chunk.push(acc & 255);
+  if (chunk.length){ push(chunk.length); for (const b of chunk) push(b); }
+  push(0);
+}
+async function downloadGIF(){
+  if (!totalStrokes()){ toast('Draw something first'); return; }
+  toast('Rendering GIF…'); await new Promise(r => setTimeout(r, 30));
+  try {
+    const F = Math.max(1, S.layers.some(L => L.visible && layerAmp(L) > 0) ? S.frames : 1);
+    const k = Math.min(2, 1024 / Math.max(S.w, S.h));
+    const frames = []; for (let f = 0; f < F; f++) frames.push(renderFrameTo(f, k));
+    const W = frames[0].width, H = frames[0].height;
+    // palette from a sample of every frame
+    const samples = []; const step = Math.max(1, Math.floor((W * H * F) / 40000));
+    for (const fr of frames) for (let i = 0; i < fr.data.length; i += 4 * step){ samples.push(fr.data[i], fr.data[i + 1], fr.data[i + 2]); }
+    const pal = medianCut(samples, 256); while (pal.length < 256) pal.push([0, 0, 0]);
+    const nearest = new Map();
+    const idx = (r, g, b) => { const key = ((r >> 2) << 12) | ((g >> 2) << 6) | (b >> 2); let v = nearest.get(key); if (v !== undefined) return v; let best = 0, bd = Infinity; for (let i = 0; i < pal.length; i++){ const d = (pal[i][0] - r) ** 2 + (pal[i][1] - g) ** 2 + (pal[i][2] - b) ** 2; if (d < bd){ bd = d; best = i; } } nearest.set(key, best); return best; };
+    const out = []; const push = b => out.push(b); const u16 = v => { push(v & 255); push((v >> 8) & 255); };
+    for (const c of 'GIF89a') push(c.charCodeAt(0));
+    u16(W); u16(H); push(0xF7); push(0); push(0);
+    for (const c of pal){ push(c[0]); push(c[1]); push(c[2]); }
+    if (F > 1){ push(0x21); push(0xFF); push(11); for (const c of 'NETSCAPE2.0') push(c.charCodeAt(0)); push(3); push(1); u16(0); push(0); }
+    const delay = Math.max(2, Math.round(100 / S.fps));
+    for (const fr of frames){
+      const n = W * H, ind = new Uint8Array(n), d = fr.data;
+      for (let i = 0; i < n; i++) ind[i] = idx(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]);
+      push(0x21); push(0xF9); push(4); push(0x04); u16(F > 1 ? delay : 0); push(0); push(0);
+      push(0x2C); u16(0); u16(0); u16(W); u16(H); push(0);
+      push(8); lzwEncode(ind, 8, push);
+      await new Promise(r => setTimeout(r, 0));
+    }
+    push(0x3B);
+    const blob = new Blob([Uint8Array.from(out)], { type: 'image/gif' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (S.name || 'chainpainter') + '.gif'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('GIF saved (' + fmtKB(blob.size) + ', ' + W + '×' + H + ', ' + F + ' frame' + (F === 1 ? '' : 's') + ')');
+  } catch (err) { toast('Could not build the GIF'); console.error(err); }
+}
 $('copyUri2').addEventListener('click', () => $('copyUri').click());
 $('dlMeta2').addEventListener('click', () => $('dlMeta').click());
 $('symbol').addEventListener('input', () => { S.symbol = $('symbol').value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); $('symbol').value = S.symbol; renderAbx(); autosave(); });
