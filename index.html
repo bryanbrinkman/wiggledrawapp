@@ -281,6 +281,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <div class="row">
     <button class="primary" id="download" title="Download the animated SVG">Download SVG</button>
     <button id="copy" title="Copy the SVG source">Copy SVG</button>
+    <button id="dlPng" title="Save a 2048px PNG of the first frame, for posts and previews">Download PNG</button>
     <button id="share" title="Copy a link that plays this drawing — the whole project travels in the link, nothing is uploaded">Copy link</button>
     <button id="show">Show code</button>
   </div>
@@ -295,7 +296,6 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <div class="row plats" role="tablist" aria-label="Minting platform">
     <button class="plat" data-plat="transient" aria-pressed="false" title="Transient Labs Studio: paste a 24 KB base64 token URI">Transient Labs</button>
     <button class="plat" data-plat="abx" aria-pressed="false" title="ABX by Art Blocks: deploy the SVG with the abx command-line tool">ABX <span class="dim">by Art Blocks</span></button>
-    <button class="plat" data-plat="manifold" aria-pressed="false" title="Manifold Studio: upload the SVG in the browser, stored on Arweave, no size limit">Manifold</button>
   </div>
 
   <div class="panel" id="panel-transient" hidden>
@@ -329,19 +329,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
     <p class="hint">ABX is prerelease and flags can change: check <code>abx deploy --help</code>. <a href="https://docs.abx.io/docs/using-abx/guides/deploy-a-digital-asset" target="_blank" rel="noopener">Deploy guide ↗</a> · <a href="https://docs.abx.io/docs/using-abx/quickstart" target="_blank" rel="noopener">Quickstart ↗</a></p>
   </div>
 
-  <div class="panel" id="panel-manifold" hidden>
-    <ol class="steps">
-      <li>Manifold stores media on <b>Arweave</b>, not onchain, so there is <b>no 24 KB limit</b> here. The meter keeps counting but never blocks.</li>
-      <li><button class="primary" id="mfSvg">Download SVG</button> <button id="mfPng">Download PNG still</button>
-        <span class="hint">Upload the SVG as the token's artwork. Manifold recommends a PNG copy too; it uses it as the claim-page background.</span></li>
-      <li>In <a href="https://studio.manifold.xyz" target="_blank" rel="noopener">Manifold Studio ↗</a>, open or create a contract, choose <b>Create a token</b>, and upload the SVG. Then paste:
-        <div class="row"><button class="small" data-copy-el="mfTitle">Copy title</button><span class="v" id="mfTitle"></span></div>
-        <div class="row"><button class="small" data-copy-el="mfDesc">Copy description</button><span class="v clamp" id="mfDesc"></span></div>
-        <div class="row"><button class="small" data-copy-el="mfAttrs">Copy properties</button><span class="v clamp" id="mfAttrs"></span></div></li>
-      <li>Add the properties as traits if you want them, review the preview, and mint. Marketplaces play the SVG's animation; the PNG is only a fallback.</li>
-    </ol>
-    <p class="hint"><a href="https://docs.manifold.xyz" target="_blank" rel="noopener">Manifold docs ↗</a></p>
-  </div>
+</div>
 </div>
 </aside>
 </main>
@@ -684,7 +672,7 @@ function bucketAt(p){
   // Fills sit beneath this layer's strokes, above its earlier fills.
   const first = L.strokes.findIndex(s => !s.fill), at = first < 0 ? L.strokes.length : first;
   L.strokes.splice(at, 0, st);
-  if (budgetBytes() > LIMIT()){ L.strokes.splice(at, 1); flashCanvas(); toast('That fill would go over 24 KB. ' + FULL_HINT); return; }
+  if (budgetBytes() > BUDGET){ L.strokes.splice(at, 1); flashCanvas(); toast('That fill would go over 24 KB. ' + FULL_HINT); return; }
   L.ops.push({ t: 'insert', idx: at }); L.redo = []; invalidate(); draw();
 }
 
@@ -701,7 +689,7 @@ cv.addEventListener('pointerdown', e => {
     if (!layer().strokes.length){ toast('Nothing on this layer to move'); return; }
     e.preventDefault(); cv.setPointerCapture(e.pointerId); moving = true; start = pos(e); moved = [0, 0]; return;
   }
-  if (budgetBytes() > LIMIT()){ e.preventDefault(); flashCanvas(); toast(FULL_MSG); return; }
+  if (budgetBytes() > BUDGET){ e.preventDefault(); flashCanvas(); toast(FULL_MSG); return; }
   if (S.tool === 'fill'){ e.preventDefault(); bucketAt(pos(e)); return; }
   e.preventDefault(); cv.setPointerCapture(e.pointerId);
   drawing = true; start = pos(e); raw = [start];
@@ -726,7 +714,7 @@ cv.addEventListener('pointerup', e => {
   applyMove(pos(e));
   live.pts = live.pts.map(([x, y]) => [Math.round(x), Math.round(y)]);
   const L = layer(); L.strokes.push(live); live = null;
-  if (budgetBytes() > LIMIT()){ L.strokes.pop(); flashCanvas(); toast('That stroke would go over 24 KB. ' + FULL_HINT); return; }
+  if (budgetBytes() > BUDGET){ L.strokes.pop(); flashCanvas(); toast('That stroke would go over 24 KB. ' + FULL_HINT); return; }
   L.ops.push({ t: 'stroke' }); L.redo = []; invalidate(); draw();
 });
 cv.addEventListener('pointercancel', () => {
@@ -943,7 +931,7 @@ function projectJSON(){
 function loadProject(obj){
   if (!obj || !['chainpainter', 'wiggle-paint'].includes(obj.app) || !Array.isArray(obj.layers)) throw new Error('Not a ChainPainter project');
   S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled'; S.desc = typeof obj.desc === 'string' ? obj.desc : '';
-  S.platform = ['abx', 'manifold'].includes(obj.platform) ? obj.platform : 'transient'; S.symbol = typeof obj.symbol === 'string' ? obj.symbol : ''; S.abxChain = ['base-sepolia', 'sepolia', 'base'].includes(obj.abxChain) ? obj.abxChain : 'base';
+  S.platform = obj.platform === 'abx' ? 'abx' : 'transient'; S.symbol = typeof obj.symbol === 'string' ? obj.symbol : ''; S.abxChain = ['base-sepolia', 'sepolia', 'base'].includes(obj.abxChain) ? obj.abxChain : 'base';
   S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
   S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [], ops: (Array.isArray(L.strokes) ? L.strokes : []).map(() => ({ t: 'stroke' })) }));
   if (!S.layers.length) S.layers = [newLayer('Layer 1')];
@@ -1093,15 +1081,13 @@ async function buildToken(){ const svg = toSVG(); const hash = await sha256(svg)
 function fmtKB(n){ return (n / 1024).toFixed(1) + ' KB'; }
 // The hash is always 64 hex chars, so a placeholder gives the exact final size without async work.
 // Transient counts the base64 token URI; ABX counts the raw SVG file.
-const budgetBytes = svg => { svg = svg || toSVG(); return S.platform === 'transient' ? tokenURI(metadata(svg, '0'.repeat(64))).length : utf8(svg).length; };
-// Manifold stores media on Arweave, so nothing is enforced there.
-const LIMIT = () => S.platform === 'manifold' ? Infinity : BUDGET;
+const budgetBytes = svg => { svg = svg || toSVG(); return S.platform === 'abx' ? utf8(svg).length : tokenURI(metadata(svg, '0'.repeat(64))).length; };
+
 function updateBudget(svg){
   const n = budgetBytes(svg);
-  const over = n > LIMIT(), el = $('budget'); el.dataset.over = over ? '1' : '0'; $('status').dataset.over = el.dataset.over; cv.classList.toggle('over', over);
+  const over = n > BUDGET, el = $('budget'); el.dataset.over = over ? '1' : '0'; $('status').dataset.over = el.dataset.over; cv.classList.toggle('over', over);
   el.querySelector('b').style.setProperty('--p', Math.min(100, n / BUDGET * 100) + '%');
-  $('budgetOut').textContent = S.platform === 'manifold' ? fmtKB(n) + ' · Manifold · no limit' : fmtKB(n) + ' / 24 KB · ' + (S.platform === 'abx' ? 'ABX' : 'Transient') + (over ? ' · over' : '');
-  renderManifold();
+  $('budgetOut').textContent = fmtKB(n) + ' / 24 KB · ' + (S.platform === 'abx' ? 'ABX' : 'Transient') + (over ? ' · over' : '');
   renderAbx();
   if ($('meta').classList.contains('open')) buildToken().then(t => { $('meta').value = JSON.stringify(t.meta, null, 2); });
 }
@@ -1116,7 +1102,7 @@ function restoreSnapshot(json){
 async function fitToBudget(){
   if (fitBackup){ fitting = true; restoreSnapshot(fitBackup); fitBackup = null; fitting = false; invalidate(); draw(); toast('Fit undone'); return; }
   const before = budgetBytes();
-  if (before <= LIMIT()){ toast(S.platform === 'manifold' ? 'Manifold has no size limit' : 'Already under 24 KB'); return; }
+  if (before <= BUDGET){ toast('Already under 24 KB'); return; }
   if (!(await ask('Simplify strokes until the token URI is under 24 KB? You can undo this until you draw again.'))) return;
   const backup = snapshot();
   const strokes = S.layers.flatMap(L => L.strokes.filter(st => !st.closed || st.fill));
@@ -1142,7 +1128,7 @@ function renderPlatforms(){
     const on = b.dataset.plat === S.platform;
     b.setAttribute('aria-pressed', String(on)); $('panel-' + b.dataset.plat).hidden = !(on && platOpen);
   });
-  $('budget').title = { abx: 'Raw SVG size — ABX keeps onchain images under 24 KB', manifold: 'Raw SVG size — Manifold stores media on Arweave with no limit', transient: 'Token URI size — Transient Labs requires under 24 KB' }[S.platform];
+  $('budget').title = S.platform === 'abx' ? 'Raw SVG size — ABX keeps onchain images under 24 KB' : 'Token URI size — Transient Labs requires under 24 KB';
 }
 document.querySelectorAll('.plat').forEach(b => b.addEventListener('click', () => {
   const plat = b.dataset.plat;
@@ -1168,12 +1154,7 @@ function renderAbx(){
   if ($('panel-abx').hidden) return;
   $('abxFile').textContent = abxFile(); $('abxDry').textContent = abxCmd('dry'); $('abxSign').textContent = abxCmd('sign'); $('abxPrompt').textContent = abxPrompt();
 }
-function renderManifold(){
-  if ($('panel-manifold').hidden) return;
-  $('mfTitle').textContent = tokenName(); $('mfDesc').textContent = abxDesc();
-  $('mfAttrs').textContent = metadata('<svg/>', null).attributes.map(a => a.trait_type + ': ' + a.value).join(' · ');
-}
-// Rasterise frame 0 of the exported SVG at 2× for a still image (Manifold's claim-page background, social posts).
+// Rasterise frame 0 of the exported SVG at 2× for a still image (posts, previews).
 async function downloadPNG(){
   if (!totalStrokes()){ toast('Draw something first'); return; }
   const svg = toSVG(), img = new Image();
@@ -1187,12 +1168,11 @@ async function downloadPNG(){
     setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast('PNG saved (' + c.width + '×' + c.height + ')');
   }, 'image/png');
 }
-$('mfSvg').addEventListener('click', () => $('download').click());
-$('mfPng').addEventListener('click', downloadPNG);
+$('dlPng').addEventListener('click', downloadPNG);
 $('symbol').addEventListener('input', () => { S.symbol = $('symbol').value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); $('symbol').value = S.symbol; renderAbx(); autosave(); });
 $('abxChain').addEventListener('change', () => { S.abxChain = $('abxChain').value; renderAbx(); autosave(); });
 $('abxDownload').addEventListener('click', () => $('download').click());
-document.querySelectorAll('[data-copy-el]').forEach(b => b.addEventListener('click', () => copyText($(b.dataset.copyEl).textContent.split(' · ').join('\n'), () => 'Copied', 'Copy this')));
+document.querySelectorAll('[data-copy-el]').forEach(b => b.addEventListener('click', () => copyText($(b.dataset.copyEl).textContent, () => 'Copied', 'Copy this')));
 $('tokName').addEventListener('input', () => { S.name = tokenName().replace(/[^\w\- ]+/g, '').slice(0, 40) || 'untitled'; updateStat(); autosave(); });
 $('tokDesc').addEventListener('input', () => { S.desc = $('tokDesc').value; updateStat(); autosave(); });
 $('showMeta').addEventListener('click', async e => {
