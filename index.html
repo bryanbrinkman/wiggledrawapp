@@ -300,7 +300,6 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
     <button class="plat" data-plat="transient" aria-pressed="false" title="Transient Labs Studio: paste a 24 KB base64 token URI">Transient Labs</button>
     <button class="plat" data-plat="abx" aria-pressed="false" title="ABX by Art Blocks: deploy the SVG with the abx command-line tool">ABX <span class="dim">by Art Blocks</span></button>
     <button class="plat" data-plat="manifold" aria-pressed="false" title="Manifold Creator contract: mint the base64 token URI onchain with mintBase(to, uri)">Manifold</button>
-    <button class="plat" data-plat="highlight" aria-pressed="false" title="Highlight 1/1 contract: write the base64 token URI onchain with setEditionURI">Highlight</button>
   </div>
 
   <div class="panel" id="panel-transient" hidden>
@@ -348,18 +347,6 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
     <p class="hint">Function reference: <a href="https://docs.manifold.xyz/manifold-for-developers/smart-contracts/manifold-creator/contracts/creator-core/common-functions" target="_blank" rel="noopener">Manifold Creator Core ↗</a></p>
   </div>
 
-  <div class="panel" id="panel-highlight" hidden>
-    <ol class="steps">
-      <li>Highlight uploads to Arweave by default, but its 1/1 and edition contracts store one URI per edition and return it from <code>tokenURI</code> untouched, so you can write the token URI straight into the contract. Gas scales with size: keep the meter under <b>24 KB</b>. Cheap on Base and Highlight's other L2s, expensive on Ethereum mainnet. Over 24 KB still works, it just costs more.</li>
-      <li>Create a <b>1/1</b> collection on <a href="https://highlight.xyz" target="_blank" rel="noopener">Highlight ↗</a> on the chain you want. Any placeholder image is fine for the upload step; the onchain URI replaces it.</li>
-      <li><button class="primary" id="copyUri3" title="Copy the base64 token URI">Copy token URI</button> <button id="dlMeta3">Download token JSON</button>
-        <span class="hint">The same self-contained <code>data:application/json;base64,…</code> as the Transient and Manifold flows.</span></li>
-      <li>Open the collection contract on the block explorer → <b>Contract</b> → <b>Write as Proxy</b> → connect the owner wallet → <code>setEditionURI(editionId, _uri)</code>. Use <code>0</code> for <code>editionId</code> and paste the token URI as <code>_uri</code>, then write.
-        <span class="hint">Series contract instead? Use <code>setTokenURIs(ids, uris)</code> with the token id and the URI. Make this the last edit: changing the token in Highlight's UI afterwards can point it back at Arweave.</span></li>
-      <li>Reload the token page. Metadata and animation now come straight from the chain.</li>
-    </ol>
-    <p class="hint"><a href="https://support.highlight.xyz/knowledge-base" target="_blank" rel="noopener">Highlight knowledge base ↗</a> (search “storing SVGs onchain”) · <a href="https://github.com/highlightxyz/hl-evm-contracts/blob/main/contracts/erc721/ERC721SingleEditionDFS.sol" target="_blank" rel="noopener">contract source ↗</a></p>
-  </div>
 </div>
 </div>
 </aside>
@@ -978,7 +965,7 @@ function projectJSON(){
 function loadProject(obj){
   if (!obj || !['chainpainter', 'wiggle-paint'].includes(obj.app) || !Array.isArray(obj.layers)) throw new Error('Not a ChainPainter project');
   S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled'; S.desc = typeof obj.desc === 'string' ? obj.desc : '';
-  S.platform = ['abx', 'manifold', 'highlight'].includes(obj.platform) ? obj.platform : 'transient'; S.symbol = typeof obj.symbol === 'string' ? obj.symbol : ''; S.abxChain = ['base-sepolia', 'sepolia', 'base'].includes(obj.abxChain) ? obj.abxChain : 'base';
+  S.platform = ['abx', 'manifold'].includes(obj.platform) ? obj.platform : 'transient'; S.symbol = typeof obj.symbol === 'string' ? obj.symbol : ''; S.abxChain = ['base-sepolia', 'sepolia', 'base'].includes(obj.abxChain) ? obj.abxChain : 'base';
   S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
   S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [], ops: (Array.isArray(L.strokes) ? L.strokes : []).map(() => ({ t: 'stroke' })), ...(typeof L.amp === 'number' ? { amp: L.amp } : {}) }));
   if (!S.layers.length) S.layers = [newLayer('Layer 1')];
@@ -1129,15 +1116,15 @@ function fmtKB(n){ return (n / 1024).toFixed(1) + ' KB'; }
 // The hash is always 64 hex chars, so a placeholder gives the exact final size without async work.
 // Transient counts the base64 token URI; ABX counts the raw SVG file.
 const budgetBytes = svg => { svg = svg || toSVG(); return S.platform === 'abx' ? utf8(svg).length : tokenURI(metadata(svg, '0'.repeat(64))).length; };
-// Transient and ABX reject oversize tokens; Manifold and Highlight only charge more gas, so they warn but never block drawing.
-const SOFT = () => S.platform === 'manifold' || S.platform === 'highlight';
+// Transient and ABX reject oversize tokens; Manifold only charges more gas, so it warns but never blocks drawing.
+const SOFT = () => S.platform === 'manifold';
 const LIMIT = () => SOFT() ? Infinity : BUDGET;
 
 function updateBudget(svg){
   const n = budgetBytes(svg);
   const over = n > BUDGET, el = $('budget'); el.dataset.over = over ? '1' : '0'; $('status').dataset.over = el.dataset.over; cv.classList.toggle('over', n > LIMIT());
   el.querySelector('b').style.setProperty('--p', Math.min(100, n / BUDGET * 100) + '%');
-  const who = { abx: 'ABX', manifold: 'Manifold', highlight: 'Highlight', transient: 'Transient' }[S.platform];
+  const who = { abx: 'ABX', manifold: 'Manifold', transient: 'Transient' }[S.platform];
   $('budgetOut').textContent = fmtKB(n) + ' / 24 KB · ' + who + (over ? (SOFT() ? ' · over, costs more gas' : ' · over') : '');
   renderAbx();
   if ($('meta').classList.contains('open')) buildToken().then(t => { $('meta').value = JSON.stringify(t.meta, null, 2); });
@@ -1179,7 +1166,7 @@ function renderPlatforms(){
     const on = b.dataset.plat === S.platform;
     b.setAttribute('aria-pressed', String(on)); $('panel-' + b.dataset.plat).hidden = !(on && platOpen);
   });
-  $('budget').title = { abx: 'Raw SVG size — ABX keeps onchain images under 24 KB', manifold: 'Token URI size — written into your Manifold contract; gas grows with size', highlight: 'Token URI size — written into your Highlight contract; gas grows with size', transient: 'Token URI size — Transient Labs requires under 24 KB' }[S.platform];
+  $('budget').title = { abx: 'Raw SVG size — ABX keeps onchain images under 24 KB', manifold: 'Token URI size — written into your Manifold contract; gas grows with size', transient: 'Token URI size — Transient Labs requires under 24 KB' }[S.platform];
 }
 document.querySelectorAll('.plat').forEach(b => b.addEventListener('click', () => {
   const plat = b.dataset.plat;
@@ -1222,8 +1209,6 @@ async function downloadPNG(){
 $('dlPng').addEventListener('click', downloadPNG);
 $('copyUri2').addEventListener('click', () => $('copyUri').click());
 $('dlMeta2').addEventListener('click', () => $('dlMeta').click());
-$('copyUri3').addEventListener('click', () => $('copyUri').click());
-$('dlMeta3').addEventListener('click', () => $('dlMeta').click());
 $('symbol').addEventListener('input', () => { S.symbol = $('symbol').value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); $('symbol').value = S.symbol; renderAbx(); autosave(); });
 $('abxChain').addEventListener('change', () => { S.abxChain = $('abxChain').value; renderAbx(); autosave(); });
 $('abxDownload').addEventListener('click', () => $('download').click());
