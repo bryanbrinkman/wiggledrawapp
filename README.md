@@ -53,6 +53,8 @@ The **Mint onchain** section has a button per platform. Pick one and it expands 
 
 **ABX (Art Blocks)** counts the raw SVG against 24 KB, so roughly 1.8× more art fits. ABX deploys from the command line with your browser wallet ([deploy guide](https://docs.abx.io/docs/using-abx/guides/deploy-a-digital-asset)). The flow takes a symbol and network, then gives you a ready‑to‑paste dry‑run command, the real `--sign` command, and a prefilled prompt for a coding agent using the ABX skill. It defaults to Base (production beta); pick Base Sepolia for a free rehearsal. ABX is prerelease, so check `abx deploy --help` if a flag has moved.
 
+**Manifold** takes the SVG as a normal upload in [Manifold Studio](https://studio.manifold.xyz), stored on Arweave, so there is no size limit and the meter never blocks. The flow gives you the SVG, a 2× PNG still (Manifold uses it for claim‑page backgrounds), and copy buttons for the title, description and properties to paste into the token form.
+
 When over budget, **Fit to 24 KB** re‑simplifies strokes (and drops frames if it must) until the piece fits the selected platform. Fit can be undone until you draw again.
 
 ## How the export works
