@@ -765,17 +765,28 @@ const ask = msg => dialog(msg, false);
 // Copy button writes inside its own click.
 // Old-style copy through a selected textarea. Synchronous, and the one path that works on iOS
 // WebViews (Chrome and Safari on iPad/iPhone) where the async clipboard API can silently fail.
+// iOS gotchas handled here: a read-only field cannot be selected by script (the copy then "succeeds"
+// with nothing in it), the selection must be made with a Range, and we also hand the text to the copy
+// event directly so the right bytes go out whatever the selection ended up being.
 function legacyCopy(text){
+  let ta = null, onCopy = null;
   try {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.setAttribute('readonly', ''); ta.setAttribute('aria-hidden', 'true');
-    ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;opacity:0;font-size:16px;';
+    ta = document.createElement('textarea');
+    ta.value = text; ta.contentEditable = 'true'; ta.spellcheck = false; ta.setAttribute('aria-hidden', 'true');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;opacity:0;font-size:16px;border:0;padding:0;';
     document.body.appendChild(ta);
-    ta.focus({ preventScroll: true }); ta.select(); ta.setSelectionRange(0, text.length);
-    const ok = document.execCommand && document.execCommand('copy');
-    document.body.removeChild(ta);
-    return !!ok;
+    let handled = false;
+    onCopy = e => { try { e.clipboardData.setData('text/plain', text); e.preventDefault(); handled = true; } catch {} };
+    document.addEventListener('copy', onCopy, true);
+    ta.focus({ preventScroll: true });
+    const range = document.createRange(); range.selectNodeContents(ta);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    ta.setSelectionRange(0, text.length);
+    const ok = !!(document.execCommand && document.execCommand('copy'));
+    sel.removeAllRanges();
+    return ok || handled;
   } catch { return false; }
+  finally { if (onCopy) document.removeEventListener('copy', onCopy, true); if (ta) ta.remove(); }
 }
 const IOS_LIKE = /iP(ad|hone|od)/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 async function copyText(value, okMsg, label){
@@ -803,14 +814,12 @@ async function copyText(value, okMsg, label){
 }
 function copyDialog(text, label){
   const v = $('veil'), inp = $('dlgIn');
-  $('dlgMsg').textContent = label; inp.style.display = 'block'; inp.value = text; inp.readOnly = true;
+  $('dlgMsg').textContent = label; inp.style.display = 'block'; inp.value = text; inp.readOnly = false; inp.oninput = () => { inp.value = text; };
   $('dlgOk').textContent = 'Copy'; v.classList.add('open');
-  const done = () => { v.classList.remove('open'); $('dlgOk').textContent = 'OK'; inp.readOnly = false; $('dlgOk').onclick = $('dlgNo').onclick = null; v.onclick = null; inp.onkeydown = null; };
+  const done = () => { v.classList.remove('open'); $('dlgOk').textContent = 'OK'; inp.oninput = null; $('dlgOk').onclick = $('dlgNo').onclick = null; v.onclick = null; inp.onkeydown = null; };
   $('dlgOk').onclick = () => {
-    // Runs inside the button's own tap: select the visible field and copy synchronously, then try the async API.
-    let ok = false;
-    try { inp.focus(); inp.setSelectionRange(0, text.length); ok = document.execCommand && document.execCommand('copy'); } catch {}
-    if (ok){ toast('Copied'); done(); return; }
+    // Runs inside the button's own tap: the selection-based copy first (reliable on iOS), then the async API.
+    if (legacyCopy(text)){ toast('Copied'); done(); return; }
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => { toast('Copied'); done(); }, () => toast('Long-press the text, Select All, then Copy'));
     else toast('Long-press the text, Select All, then Copy');
   };
