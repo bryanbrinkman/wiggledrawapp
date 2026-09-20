@@ -204,6 +204,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button id="vfs" class="fs" title="Full screen">⛶</button>
   <button id="vdownload">Download SVG</button>
   <button id="vshare">Copy link</button>
+  <button id="vshareNative" class="native" hidden>Share…</button>
   <button class="primary" id="remix">Remix in ChainPainter</button>
 </div>
 </section>
@@ -287,6 +288,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
     <button id="dlPng" title="Save a 2048px PNG of the first frame, for posts and previews">Download PNG</button>
     <button id="dlGif" title="Save a looping GIF of the wiggle, for posts and previews">Download GIF</button>
     <button id="share" title="Copy a link that plays this drawing — the whole project travels in the link, nothing is uploaded">Copy link</button>
+    <button id="shareNative" class="native" hidden title="Open the system share sheet with the link">Share…</button>
     <button id="show">Show code</button>
   </div>
   <textarea id="code" readonly spellcheck="false" aria-label="SVG source"></textarea>
@@ -761,16 +763,40 @@ const ask = msg => dialog(msg, false);
 // Order of attempts: a string is written synchronously; a pending value goes through ClipboardItem with a
 // promise, which WebKit accepts; otherwise await it and try writeText; if all fail, show a dialog whose
 // Copy button writes inside its own click.
+// Old-style copy through a selected textarea. Synchronous, and the one path that works on iOS
+// WebViews (Chrome and Safari on iPad/iPhone) where the async clipboard API can silently fail.
+function legacyCopy(text){
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.setAttribute('aria-hidden', 'true');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;opacity:0;font-size:16px;';
+    document.body.appendChild(ta);
+    ta.focus({ preventScroll: true }); ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand && document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch { return false; }
+}
+const IOS_LIKE = /iP(ad|hone|od)/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 async function copyText(value, okMsg, label){
   const write = async () => {
-    if (typeof value === 'string'){ await navigator.clipboard.writeText(value); return value; }
-    if (window.ClipboardItem && navigator.clipboard.write){
+    if (typeof value === 'string'){
+      // On iOS the legacy path is the reliable one, so try it first there; elsewhere prefer the async API.
+      if (IOS_LIKE && legacyCopy(value)) return value;
+      if (navigator.clipboard && navigator.clipboard.writeText){ try { await navigator.clipboard.writeText(value); return value; } catch {} }
+      if (legacyCopy(value)) return value;
+      throw new Error('copy failed');
+    }
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
       try {
         const item = new ClipboardItem({ 'text/plain': value.then(t => new Blob([t], { type: 'text/plain' })) });
         await navigator.clipboard.write([item]); return value;
       } catch {}
     }
-    const text = await value; await navigator.clipboard.writeText(text); return text;
+    const text = await value;
+    if (navigator.clipboard && navigator.clipboard.writeText){ try { await navigator.clipboard.writeText(text); return text; } catch {} }
+    if (legacyCopy(text)) return text;
+    throw new Error('copy failed');
   };
   try { const t = await write(); toast(okMsg(t)); return true; }
   catch { copyDialog(await value, label); return false; }
@@ -780,7 +806,14 @@ function copyDialog(text, label){
   $('dlgMsg').textContent = label; inp.style.display = 'block'; inp.value = text; inp.readOnly = true;
   $('dlgOk').textContent = 'Copy'; v.classList.add('open');
   const done = () => { v.classList.remove('open'); $('dlgOk').textContent = 'OK'; inp.readOnly = false; $('dlgOk').onclick = $('dlgNo').onclick = null; v.onclick = null; inp.onkeydown = null; };
-  $('dlgOk').onclick = () => { navigator.clipboard.writeText(text).then(() => toast('Copied'), () => toast('Select the text and copy it')); done(); };
+  $('dlgOk').onclick = () => {
+    // Runs inside the button's own tap: select the visible field and copy synchronously, then try the async API.
+    let ok = false;
+    try { inp.focus(); inp.setSelectionRange(0, text.length); ok = document.execCommand && document.execCommand('copy'); } catch {}
+    if (ok){ toast('Copied'); done(); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => { toast('Copied'); done(); }, () => toast('Long-press the text, Select All, then Copy'));
+    else toast('Long-press the text, Select All, then Copy');
+  };
   $('dlgNo').onclick = done; v.onclick = e => { if (e.target === v) done(); }; inp.onkeydown = e => { if (e.key === 'Escape') done(); };
   setTimeout(() => { inp.focus(); try { inp.setSelectionRange(0, text.length); } catch {} }, 0);
 }
@@ -1353,6 +1386,15 @@ function copyLink(){
 }
 $('share').addEventListener('click', copyLink);
 $('vshare').addEventListener('click', copyLink);
+// Native share sheet where the browser has one (iPad, iPhone, Android, some desktops). The sheet includes Copy.
+async function shareNative(){
+  if (!totalStrokes()){ toast('Draw something first'); return; }
+  const fresh = shareCache.url && shareCache.json === projectJSON();
+  const url = fresh ? shareCache.url : await shareURL();
+  try { await navigator.share({ title: tokenName() + ' · ChainPainter', url }); }
+  catch (err) { if (!err || err.name !== 'AbortError') copyText(url, u => 'Link copied (' + fmtKB(u.length) + ')', 'Share link'); }
+}
+if (navigator.share){ document.querySelectorAll('.native').forEach(b => { b.hidden = false; b.addEventListener('click', shareNative); }); }
 $('vdownload').addEventListener('click', () => $('download').click());
 $('vplay').addEventListener('click', () => { $('play').click(); $('vplay').textContent = $('play').textContent; });
 $('remix').addEventListener('click', async () => {
