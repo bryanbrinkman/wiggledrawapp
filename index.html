@@ -142,13 +142,14 @@ input[type=file]{display:none}
 .frames{display:none;margin:0 8px 8px}
 body.anim .frames{display:flex}
 body.anim #framesRow{display:none}
+body.anim #play{display:none}
 body.view .frames{display:none !important}
 .frames{order:1}
 .frlist{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .fr{min-width:34px;padding:4px 8px;min-height:32px;font-size:13px;position:relative}
 .fr[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
 .fr .dot{position:absolute;right:3px;top:3px;width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
-#allFrames[aria-pressed="true"],#onion[aria-pressed="true"],#animMode[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
+#allFrames[aria-pressed="true"],#onion[aria-pressed="true"],#animMode[aria-pressed="true"],#fplay[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
 .status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 8px 8px;padding:6px 8px;background:var(--chrome);border:2px solid var(--chrome-edge);box-shadow:var(--shadow);font-size:13px}
 .status .stat{color:var(--muted)}
 .status #fit{display:none}
@@ -204,6 +205,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="frPrev" title="Previous frame ( , )">◀</button>
   <div class="frlist" id="frlist"></div>
   <button class="small" id="frNext" title="Next frame ( . )">▶</button>
+  <button class="small" id="fplay" title="Play / pause (Space)">Play</button>
   <span class="spacer"></span>
   <button class="small" id="frAdd" title="Add an empty frame after this one">+ Frame</button>
   <button class="small" id="frDup" title="Duplicate this frame">Duplicate</button>
@@ -257,6 +259,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="renameLayer" title="Rename layer">Rename</button>
   <button class="small" id="clear" title="Remove every stroke on the selected layer">Clear</button>
   <button class="small" id="delLayer" title="Delete the selected layer">Delete</button>
+  <button class="small" id="animMode" aria-pressed="false" title="Frame-by-frame: draw each frame separately, like Procreate's animation assist">Frame-by-frame</button>
 </div>
 
 <h2 class="sec">Color &amp; brush</h2>
@@ -273,7 +276,6 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="wigScope" aria-pressed="false" title="Amount applies to every layer, or only the selected layer">All layers</button>
   <label class="sl" title="Frames per second">Speed <input type="range" id="fps" min="2" max="16" value="8"><output id="fpsOut">8</output></label>
   <label class="sl" id="framesRow" title="How many jittered copies cycle. Fewer frames = smaller file">Frames <input type="range" id="frames" min="2" max="12" value="3"><output id="framesOut">3</output></label>
-  <button class="small" id="animMode" aria-pressed="false" title="Frame-by-frame: draw each frame separately, like Procreate's animation assist">Frame-by-frame</button>
   <span class="spacer"></span>
   <button id="play" aria-pressed="true" title="Play / pause the preview (Space)">Pause</button>
 </div>
@@ -976,8 +978,10 @@ $('play').addEventListener('click', e => {
   S.playing = !S.playing; e.target.textContent = S.playing ? 'Pause' : 'Play';
   e.target.setAttribute('aria-pressed', String(S.playing));
   if (!S.playing && S.anim) frame = S.cur;
+  $('fplay').textContent = e.target.textContent; $('fplay').setAttribute('aria-pressed', String(S.playing));
   renderFrames(); draw();
 });
+$('fplay').addEventListener('click', () => $('play').click());
 function totalStrokes(){ return S.layers.reduce((n, L) => n + L.strokes.length, 0); }
 // ---------- frame-by-frame mode ----------
 const frameHasInk = f => S.layers.some(L => L.strokes.some(st => st.f === f));
@@ -991,6 +995,7 @@ function renderFrames(){
     box.appendChild(b);
   }
   $('frDel').disabled = S.frames <= 2; $('frAdd').disabled = S.frames >= 12; $('frDup').disabled = S.frames >= 12;
+  $('fplay').textContent = S.playing ? 'Pause' : 'Play'; $('fplay').setAttribute('aria-pressed', String(S.playing));
   $('allFrames').setAttribute('aria-pressed', String(allFrames)); $('onion').setAttribute('aria-pressed', String(onionOn));
 }
 function selectFrame(f){
