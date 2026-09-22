@@ -6,6 +6,7 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Add your own colours to the palette with the **+** swatch (hold or right‑click one to remove it)
 - Move tool: drag the whole layer, or nudge it with the arrow keys (Shift = 10 px)
 - Layers (add, hide, reorder, rename, delete)
+- **Frame-by-frame** mode (like Procreate's animation assist): a frame strip under the canvas, strokes belong to the frame you draw them on, **All frames** for backgrounds and holds, onion skin, add / duplicate / delete frames, up to 12. Wiggle still applies on top.
 - Adjustable wiggle amount, speed, and frame count; the amount can be set per layer with the **All layers / This layer** toggle
 - Undo / redo and keyboard shortcuts: `P L R O E G V` pick tools, `[ ]` brush size, `⌘/Ctrl+Z` undo, `⇧⌘/Ctrl+Z` redo, `Space` play/pause, `⌘/Ctrl+S` save, `F` full screen, `?` shows the list
 - Save / open projects as JSON, autosave to the browser

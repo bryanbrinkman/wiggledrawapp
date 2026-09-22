@@ -139,6 +139,16 @@ input[type=file]{display:none}
 .side .sec{margin:8px 0 0}
 .side .sec:first-child{margin-top:0}
 .side .sec + *{margin-top:0}
+.frames{display:none;margin:0 8px 8px}
+body.anim .frames{display:flex}
+body.anim #framesRow{display:none}
+body.view .frames{display:none !important}
+.frames{order:1}
+.frlist{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.fr{min-width:34px;padding:4px 8px;min-height:32px;font-size:13px;position:relative}
+.fr[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
+.fr .dot{position:absolute;right:3px;top:3px;width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+#allFrames[aria-pressed="true"],#onion[aria-pressed="true"],#animMode[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
 .status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 8px 8px;padding:6px 8px;background:var(--chrome);border:2px solid var(--chrome-edge);box-shadow:var(--shadow);font-size:13px}
 .status .stat{color:var(--muted)}
 .status #fit{display:none}
@@ -190,6 +200,17 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 <main>
 <section class="work">
 <div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas></div>
+<div class="bar frames" id="framesBar" aria-label="Frames">
+  <button class="small" id="frPrev" title="Previous frame ( , )">◀</button>
+  <div class="frlist" id="frlist"></div>
+  <button class="small" id="frNext" title="Next frame ( . )">▶</button>
+  <span class="spacer"></span>
+  <button class="small" id="frAdd" title="Add an empty frame after this one">+ Frame</button>
+  <button class="small" id="frDup" title="Duplicate this frame">Duplicate</button>
+  <button class="small" id="frDel" title="Delete this frame">Delete</button>
+  <button class="small" id="allFrames" aria-pressed="false" title="New strokes appear on every frame (backgrounds, holds)">All frames</button>
+  <button class="small" id="onion" aria-pressed="true" title="Show the previous and next frames faintly">Onion</button>
+</div>
 <div class="status" id="status" aria-live="polite">
   <span class="budget" id="budget" title="Onchain token URI size — Transient Labs requires under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
   <span class="stat" id="stat">0 strokes</span>
@@ -251,7 +272,8 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <label class="sl" title="How far each point jitters between frames">Amount <input type="range" id="amp" min="0" max="8" step="0.5" value="2"><output id="ampOut">2</output></label>
   <button class="small" id="wigScope" aria-pressed="false" title="Amount applies to every layer, or only the selected layer">All layers</button>
   <label class="sl" title="Frames per second">Speed <input type="range" id="fps" min="2" max="16" value="8"><output id="fpsOut">8</output></label>
-  <label class="sl" title="How many jittered copies cycle. Fewer frames = smaller file">Frames <input type="range" id="frames" min="2" max="5" value="3"><output id="framesOut">3</output></label>
+  <label class="sl" id="framesRow" title="How many jittered copies cycle. Fewer frames = smaller file">Frames <input type="range" id="frames" min="2" max="12" value="3"><output id="framesOut">3</output></label>
+  <button class="small" id="animMode" aria-pressed="false" title="Frame-by-frame: draw each frame separately, like Procreate's animation assist">Frame-by-frame</button>
   <span class="spacer"></span>
   <button id="play" aria-pressed="true" title="Play / pause the preview (Space)">Pause</button>
 </div>
@@ -377,6 +399,7 @@ const S = {
   amp: 2, fps: 8, frames: 3, playing: true, seed: (Math.random() * 1e9) | 0,
   layers: [], active: 0, name: 'untitled', desc: '',
   platform: 'transient', symbol: '', abxChain: 'base',
+  anim: false, cur: 0, // frame-by-frame mode and the frame being edited
 };
 const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#ffe600','#2fd12f','#00b7a5','#1f6bff','#7a2bff','#ff3fb3','#7a3b00'];
 // Brinkman pastels: hidden until you press B or tap the secret spot beside the credit link.
@@ -386,17 +409,19 @@ const TAGLINE = 'draws SVG that wobbles · exports on-chain ready';
 let viewing = false; // true while showing a shared link (read-only)
 function newLayer(name){ return { name, visible: true, strokes: [], ops: [], redo: [] }; }
 // Undo history per layer: an op is either a stroke (always the last one in L.strokes) or a move of the whole layer.
-function translateLayer(L, dx, dy){
+// f == null moves the whole layer; a frame index moves only what is visible on that frame.
+function translateLayer(L, dx, dy, f){
   if (!dx && !dy) return;
   const mv = pts => pts.map(([x, y]) => [x + dx, y + dy]);
-  L.strokes.forEach(st => { st.pts = mv(st.pts); if (st.holes) st.holes = st.holes.map(mv); });
+  L.strokes.forEach(st => { if (f != null && !inFrame(st, f)) return; st.pts = mv(st.pts); if (st.holes) st.holes = st.holes.map(mv); });
 }
+const moveFrame = () => S.anim ? S.cur : null;
 function undo(L){
   const op = L.ops.pop(); if (!op) return;
   if (op.t === 'stroke'){ const st = L.strokes.pop(); if (st) op.st = st; }
   else if (op.t === 'insert') op.st = L.strokes.splice(op.idx, 1)[0];
   else if (op.t === 'recolor') L.strokes[op.idx].color = op.from;
-  else translateLayer(L, -op.dx, -op.dy);
+  else translateLayer(L, -op.dx, -op.dy, op.f);
   L.redo.push(op);
 }
 function redo(L){
@@ -404,21 +429,22 @@ function redo(L){
   if (op.t === 'stroke'){ if (op.st) L.strokes.push(op.st); }
   else if (op.t === 'insert'){ if (op.st) L.strokes.splice(op.idx, 0, op.st); }
   else if (op.t === 'recolor') L.strokes[op.idx].color = op.to;
-  else translateLayer(L, op.dx, op.dy);
+  else translateLayer(L, op.dx, op.dy, op.f);
   L.ops.push(op);
 }
 // Consecutive nudges within a short window merge into one undo step.
 function recordMove(L, dx, dy){
   const last = L.ops[L.ops.length - 1], now = Date.now();
-  if (last && last.t === 'move' && now - last.at < 800){ last.dx += dx; last.dy += dy; last.at = now; }
-  else L.ops.push({ t: 'move', dx, dy, at: now });
+  const f = moveFrame();
+  if (last && last.t === 'move' && last.f === f && now - last.at < 800){ last.dx += dx; last.dy += dy; last.at = now; }
+  else L.ops.push({ t: 'move', dx, dy, f, at: now });
   L.redo = [];
 }
 function moveLayer(dx, dy){
   const L = layer();
   if (!L.visible){ toast('This layer is hidden'); return; }
   if (!L.strokes.length){ toast('Nothing on this layer to move'); return; }
-  translateLayer(L, dx, dy); recordMove(L, dx, dy); invalidate(); draw();
+  translateLayer(L, dx, dy, moveFrame()); recordMove(L, dx, dy); invalidate(); draw();
 }
 function layer(){ return S.layers[S.active]; }
 
@@ -535,9 +561,15 @@ function offCanvas(i){
   if (o.width !== cv.width || o.height !== cv.height){ o.width = cv.width; o.height = cv.height; }
   return o;
 }
+// A stroke with no frame tag shows on every frame; a tagged stroke shows only on its frame.
+const inFrame = (st, f) => st.f === undefined || st.f === f;
+// The frame on screen: the frame being edited when paused in frame-by-frame mode, else the playhead.
+const dispFrame = () => (S.anim && !S.playing) ? S.cur : frame % S.frames;
+let allFrames = false, onionOn = true;
 function draw(){
   if (!cache) buildCache();
-  const f = frame % S.frames;
+  const f = dispFrame();
+  const onion = S.anim && !S.playing && onionOn && !viewing;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = S.bg; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -546,7 +578,15 @@ function draw(){
     const o = offCanvas(li), oc = o.getContext('2d');
     oc.setTransform(1, 0, 0, 1, 0, 0); oc.globalCompositeOperation = 'source-over'; oc.clearRect(0, 0, o.width, o.height);
     oc.scale(dpr, dpr);
-    for (const e of cache[li]) paintStroke(oc, e.st, e.paths[f]);
+    if (onion){
+      for (const [pf, a] of [[f - 1, 0.28], [f + 1, 0.14]]){
+        if (pf < 0 || pf >= S.frames) continue;
+        oc.globalAlpha = a;
+        for (const e of cache[li]) if (e.st.f === pf && !e.st.erase) paintStroke(oc, e.st, e.paths[pf]);
+        oc.globalAlpha = 1;
+      }
+    }
+    for (const e of cache[li]) if (inFrame(e.st, f)) paintStroke(oc, e.st, e.paths[f]);
     if (live && li === S.active) paintStroke(oc, live, new Path2D(framePaths(live, li * 100000 + L.strokes.length, layerAmp(L))[f]));
     ctx.drawImage(o, 0, 0);
   });
@@ -610,7 +650,7 @@ function boundaryMask(){
   S.layers.forEach(L => {
     if (!L.visible || !L.strokes.length) return;
     tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, W, H);
-    for (const st of L.strokes) if (!st.fill) paintStroke(tc, st.erase ? st : { ...st, color: '#000' }, new Path2D(basePath(st)));
+    for (const st of L.strokes) if (!st.fill && inFrame(st, dispFrame())) paintStroke(tc, st.erase ? st : { ...st, color: '#000' }, new Path2D(basePath(st)));
     mc.globalCompositeOperation = 'source-over'; mc.drawImage(t, 0, 0);
   });
   const d = mc.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
@@ -679,7 +719,7 @@ function bucketAt(p){
   // If new strokes have since carved a smaller region out of it, a new fill is made for just that region.
   for (let i = L.strokes.length - 1; i >= 0; i--){
     const st = L.strokes[i];
-    if (!st.fill || !hitFill(st, p)) continue;
+    if (!st.fill || !inFrame(st, dispFrame()) || !hitFill(st, p)) continue;
     // Raster vs polygon differ by about half a pixel along the perimeter; anything carved out beyond that is real.
     const all = rings(st), fillArea = Math.abs(ringArea(st.pts)) - all.slice(1).reduce((a, h) => a + Math.abs(ringArea(h)), 0);
     const tol = 0.6 * all.reduce((a, r) => a + ringLength(r), 0) + 32;
@@ -691,6 +731,7 @@ function bucketAt(p){
   if (!loops.length) return;
   loops.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)));
   const st = { color: S.color, size: 2, fill: true, pts: loops[0], closed: true, sharp: true };
+  if (S.anim && !allFrames) st.f = S.cur;
   if (loops.length > 1) st.holes = loops.slice(1);
   // Fills sit beneath this layer's strokes, above its earlier fills.
   const first = L.strokes.findIndex(s => !s.fill), at = first < 0 ? L.strokes.length : first;
@@ -717,6 +758,7 @@ cv.addEventListener('pointerdown', e => {
   e.preventDefault(); cv.setPointerCapture(e.pointerId);
   drawing = true; start = pos(e); raw = [start];
   live = { color: S.color, size: S.size, erase: S.tool === 'eraser', pts: [start], closed: false, sharp: false };
+  if (S.anim && !allFrames) live.f = S.cur;
   draw();
 });
 function applyMove(p){
@@ -725,7 +767,7 @@ function applyMove(p){
 }
 function dragMove(e){
   const p = pos(e), dx = Math.round(p[0] - start[0]) - moved[0], dy = Math.round(p[1] - start[1]) - moved[1];
-  if (dx || dy){ translateLayer(layer(), dx, dy); moved[0] += dx; moved[1] += dy; cache = null; draw(); }
+  if (dx || dy){ translateLayer(layer(), dx, dy, moveFrame()); moved[0] += dx; moved[1] += dy; cache = null; draw(); }
 }
 cv.addEventListener('pointermove', e => {
   if (moving){ dragMove(e); return; }
@@ -830,6 +872,7 @@ function showHelp(){
   const groups = [
     ['Tools', [['P', 'Pencil'], ['L', 'Line'], ['R', 'Rectangle'], ['O', 'Ellipse'], ['E', 'Eraser'], ['G', 'Fill bucket'], ['V', 'Move layer']]],
     ['Drawing', [['[  ]', 'Brush size'], ['Ctrl/⌘ Z', 'Undo'], ['Shift Ctrl/⌘ Z', 'Redo'], ['Arrows', 'Nudge layer (Move tool)'], ['Shift Arrows', 'Nudge 10 px']]],
+    ['Frames', [[', .', 'Previous / next frame (frame-by-frame)']]],
     ['App', [['Space', 'Play / pause'], ['Ctrl/⌘ S', 'Save project'], ['F', 'Full screen'], ['?', 'This list']]],
   ];
   const v = $('veil'), box = v.firstElementChild, msg = $('dlgMsg');
@@ -927,13 +970,64 @@ $('amp').addEventListener('input', e => {
 });
 $('wigScope').addEventListener('click', () => { wigScope = wigScope === 'all' ? 'layer' : 'all'; syncAmpSlider(); });
 bindRange('fps', 'fps', 'fpsOut', autosave);
-bindRange('frames', 'frames', 'framesOut', () => { invalidate(); draw(); });
+bindRange('frames', 'frames', 'framesOut', () => { S.cur = Math.min(S.cur, S.frames - 1); renderFrames(); invalidate(); draw(); });
 ['input', 'change'].forEach(ev => $('bg').addEventListener(ev, e => { if (S.bg === e.target.value) return; S.bg = e.target.value; invalidate(); draw(); }));
 $('play').addEventListener('click', e => {
   S.playing = !S.playing; e.target.textContent = S.playing ? 'Pause' : 'Play';
-  e.target.setAttribute('aria-pressed', String(S.playing)); draw();
+  e.target.setAttribute('aria-pressed', String(S.playing));
+  if (!S.playing && S.anim) frame = S.cur;
+  renderFrames(); draw();
 });
 function totalStrokes(){ return S.layers.reduce((n, L) => n + L.strokes.length, 0); }
+// ---------- frame-by-frame mode ----------
+const frameHasInk = f => S.layers.some(L => L.strokes.some(st => st.f === f));
+function renderFrames(){
+  const box = $('frlist'); box.innerHTML = '';
+  for (let f = 0; f < S.frames; f++){
+    const b = document.createElement('button'); b.className = 'fr'; b.textContent = f + 1;
+    b.setAttribute('aria-pressed', String(f === S.cur)); b.title = 'Frame ' + (f + 1);
+    if (frameHasInk(f)){ const d = document.createElement('span'); d.className = 'dot'; b.appendChild(d); }
+    b.addEventListener('click', () => selectFrame(f));
+    box.appendChild(b);
+  }
+  $('frDel').disabled = S.frames <= 2; $('frAdd').disabled = S.frames >= 12; $('frDup').disabled = S.frames >= 12;
+  $('allFrames').setAttribute('aria-pressed', String(allFrames)); $('onion').setAttribute('aria-pressed', String(onionOn));
+}
+function selectFrame(f){
+  S.cur = Math.max(0, Math.min(S.frames - 1, f));
+  if (S.playing) $('play').click(); // selecting a frame pauses on it
+  frame = S.cur; renderFrames(); draw(); autosave();
+}
+function setFrameCount(n){ S.frames = n; $('frames').value = n; $('framesOut').value = n; S.cur = Math.min(S.cur, n - 1); }
+function resetHistory(){ S.layers.forEach(L => { L.ops = L.strokes.map(() => ({ t: 'stroke' })); L.redo = []; }); }
+function shiftFrames(from, by){ S.layers.forEach(L => L.strokes.forEach(st => { if (st.f !== undefined && st.f >= from) st.f += by; })); }
+function addFrame(dup){
+  if (S.frames >= 12){ toast('12 frames is the most this export format handles well'); return; }
+  const src = S.cur, dst = S.cur + 1;
+  shiftFrames(dst, 1);
+  if (dup) S.layers.forEach(L => { const out = []; for (const st of L.strokes){ out.push(st); if (st.f === src) out.push({ ...JSON.parse(JSON.stringify(st)), f: dst }); } L.strokes = out; });
+  setFrameCount(S.frames + 1); S.cur = dst; resetHistory(); frame = S.cur; renderFrames(); invalidate(); draw();
+  toast(dup ? 'Frame duplicated' : 'Frame added');
+}
+async function deleteFrame(){
+  if (S.frames <= 2){ toast('Keep at least 2 frames'); return; }
+  const f = S.cur, n = S.layers.reduce((k, L) => k + L.strokes.filter(st => st.f === f).length, 0);
+  if (n && !(await ask('Delete frame ' + (f + 1) + ' and its ' + n + ' stroke' + (n === 1 ? '' : 's') + '?'))) return;
+  S.layers.forEach(L => { L.strokes = L.strokes.filter(st => st.f !== f); });
+  shiftFrames(f + 1, -1); setFrameCount(S.frames - 1); S.cur = Math.min(f, S.frames - 1); resetHistory(); frame = S.cur; renderFrames(); invalidate(); draw();
+}
+$('animMode').addEventListener('click', () => {
+  S.anim = !S.anim; document.body.classList.toggle('anim', S.anim); $('animMode').setAttribute('aria-pressed', String(S.anim));
+  if (S.anim){ S.cur = Math.min(frame % S.frames, S.frames - 1); if (S.playing) $('play').click(); frame = S.cur; toast('Frame-by-frame: draw on frame ' + (S.cur + 1) + '. Use All frames for backgrounds.'); }
+  renderFrames(); fitCanvas(); autosave();
+});
+$('frPrev').addEventListener('click', () => selectFrame(S.cur - 1));
+$('frNext').addEventListener('click', () => selectFrame(S.cur + 1));
+$('frAdd').addEventListener('click', () => addFrame(false));
+$('frDup').addEventListener('click', () => addFrame(true));
+$('frDel').addEventListener('click', deleteFrame);
+$('allFrames').addEventListener('click', () => { allFrames = !allFrames; renderFrames(); toast(allFrames ? 'New strokes show on every frame' : 'New strokes belong to the current frame'); });
+$('onion').addEventListener('click', () => { onionOn = !onionOn; renderFrames(); draw(); });
 $('dims').addEventListener('change', async e => {
   const [w, h] = e.target.value.split(',').map(Number);
   if (totalStrokes() && !(await ask('Changing size clears all layers. Continue?'))) { e.target.value = S.w + ',' + S.h; return; }
@@ -957,6 +1051,7 @@ window.addEventListener('keydown', e => {
   if (plain && (e.key === '[' || e.key === ']')){ e.preventDefault(); S.size = Math.max(1, Math.min(40, S.size + (e.key === ']' ? 1 : -1))); $('size').value = S.size; $('sizeOut').value = S.size; return; }
   if (plain && e.key === ' ' && e.target.tagName !== 'BUTTON'){ e.preventDefault(); $('play').click(); return; }
   if (plain && e.key === '?'){ e.preventDefault(); showHelp(); return; }
+  if (plain && S.anim && (e.key === ',' || e.key === '.')){ e.preventDefault(); selectFrame(S.cur + (e.key === '.' ? 1 : -1)); return; }
   if (plain && e.key.toLowerCase() === 'b'){ e.preventDefault(); setPastels(!document.body.classList.contains('pastels')); return; }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); (e.shiftKey ? $('redo') : $('undo')).click(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); $('saveProj').click(); }
@@ -1002,14 +1097,15 @@ $('delLayer').addEventListener('click', async () => {
 
 // ---------- project save / open ----------
 function projectJSON(){
-  return JSON.stringify({ app: 'chainpainter', v: 2, name: S.name, desc: S.desc, platform: S.platform, symbol: S.symbol, abxChain: S.abxChain, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
+  return JSON.stringify({ app: 'chainpainter', v: 2, name: S.name, desc: S.desc, platform: S.platform, symbol: S.symbol, abxChain: S.abxChain, anim: S.anim, cur: S.cur, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
     layers: S.layers.map(L => ({ name: L.name, visible: L.visible, strokes: L.strokes, ...(typeof L.amp === 'number' ? { amp: L.amp } : {}) })) });
 }
 function loadProject(obj){
   if (!obj || !['chainpainter', 'wiggle-paint'].includes(obj.app) || !Array.isArray(obj.layers)) throw new Error('Not a ChainPainter project');
   S.w = +obj.w || 512; S.h = +obj.h || 512; S.bg = obj.bg || '#fbfaf3'; S.name = obj.name || 'untitled'; S.desc = typeof obj.desc === 'string' ? obj.desc : '';
   S.platform = ['abx', 'manifold'].includes(obj.platform) ? obj.platform : 'transient'; S.symbol = typeof obj.symbol === 'string' ? obj.symbol : ''; S.abxChain = ['base-sepolia', 'sepolia', 'base'].includes(obj.abxChain) ? obj.abxChain : 'base';
-  S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = obj.frames ?? 3; S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
+  S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = Math.max(2, Math.min(12, obj.frames ?? 3)); S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
+  S.anim = !!obj.anim; S.cur = Math.max(0, Math.min(S.frames - 1, obj.cur | 0));
   S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [], ops: (Array.isArray(L.strokes) ? L.strokes : []).map(() => ({ t: 'stroke' })), ...(typeof L.amp === 'number' ? { amp: L.amp } : {}) }));
   if (!S.layers.length) S.layers = [newLayer('Layer 1')];
   S.active = Math.min(S.layers.length - 1, obj.active ?? S.layers.length - 1);
@@ -1018,13 +1114,15 @@ function loadProject(obj){
 function syncControls(){
   syncAmpSlider(); $('fps').value = S.fps; $('fpsOut').value = S.fps;
   $('frames').value = S.frames; $('framesOut').value = S.frames; $('bg').value = S.bg;
+  document.body.classList.toggle('anim', S.anim); $('animMode').setAttribute('aria-pressed', String(S.anim)); frame = S.cur; renderFrames();
+  if (S.anim && S.playing && !viewing){ S.playing = false; $('play').textContent = 'Play'; $('play').setAttribute('aria-pressed', 'false'); }
   $('tokName').value = S.name === 'untitled' ? '' : S.name; $('tokDesc').value = S.desc;
   $('symbol').value = S.symbol; $('abxChain').value = S.abxChain; renderPlatforms();
   const d = S.w + ',' + S.h; if ([...$('dims').options].some(o => o.value === d)) $('dims').value = d;
   renderLayers(); cache = null; fitCanvas(); updateStat();
 }
 function freshProject(){
-  S.layers = [newLayer('Layer 1')]; S.active = 0; S.name = 'untitled'; S.desc = ''; S.symbol = ''; S.seed = (Math.random() * 1e9) | 0;
+  S.layers = [newLayer('Layer 1')]; S.active = 0; S.name = 'untitled'; S.desc = ''; S.symbol = ''; S.anim = false; S.cur = 0; S.seed = (Math.random() * 1e9) | 0;
   syncControls(); autosave();
 }
 // Autosave to this browser so a refresh doesn't lose work (per-viewer convenience only).
@@ -1055,7 +1153,8 @@ $('fileIn').addEventListener('change', e => {
 // Frame 0 is the static fallback. Inside a frame, consecutive strokes with the same colour and width share
 // a <g> so the attributes aren't repeated per path. Eraser strokes become a per-layer, per-frame mask.
 function toSVG(){
-  const animated = S.frames > 1 && S.layers.some(L => L.visible && layerAmp(L) > 0), F = animated ? S.frames : 1;
+  const hasFrames = S.layers.some(L => L.visible && L.strokes.some(st => st.f !== undefined));
+  const animated = S.frames > 1 && (hasFrames || S.layers.some(L => L.visible && layerAmp(L) > 0)), F = animated ? S.frames : 1;
   const dur = (F / S.fps).toFixed(3);
   const layers = S.layers.map((L, li) => ({ L, li, paths: L.strokes.map((st, i) => framePaths(st, li * 100000 + i, layerAmp(L))) }))
     .filter(x => x.L.visible && x.L.strokes.some(st => !st.erase));
@@ -1079,7 +1178,7 @@ function toSVG(){
     const flush = () => { frame += runs(pending, true); pending = []; };
     layers.forEach(({ L, li, paths }) => {
       const paints = [], erases = [];
-      L.strokes.forEach((st, i) => (st.erase ? erases : paints).push({ st, d: paths[i][f] }));
+      L.strokes.forEach((st, i) => { if (inFrame(st, f)) (st.erase ? erases : paints).push({ st, d: paths[i][f] }); });
       if (!erases.length){ pending.push(...paints); return; }
       flush();
       const id = `m${li + 1}f${f}`;
@@ -1099,7 +1198,8 @@ function toSVG(){
 function updateStat(){
   const svg = toSVG();
   const bytes = new TextEncoder().encode(svg).length, n = totalStrokes();
-  $('stat').textContent = `${n} stroke${n === 1 ? '' : 's'} · ${S.layers.length} layer${S.layers.length === 1 ? '' : 's'} · SVG ${bytes >= 1024 ? (bytes / 1024).toFixed(1) + ' KB' : bytes + ' bytes'}`;
+  $('stat').textContent = `${n} stroke${n === 1 ? '' : 's'} · ${S.layers.length} layer${S.layers.length === 1 ? '' : 's'}${S.anim ? ' · ' + S.frames + ' frames' : ''} · SVG ${bytes >= 1024 ? (bytes / 1024).toFixed(1) + ' KB' : bytes + ' bytes'}`;
+  if (S.anim) renderFrames();
   syncHistoryButtons();
   if ($('code').classList.contains('open')) $('code').value = svg;
   updateBudget(svg);
@@ -1263,7 +1363,7 @@ function renderFrameTo(f, k){
   S.layers.forEach((L, li) => {
     if (!L.visible || !L.strokes.length) return;
     lc.setTransform(1, 0, 0, 1, 0, 0); lc.globalCompositeOperation = 'source-over'; lc.clearRect(0, 0, W, H); lc.scale(k, k);
-    for (const e of cache[li]) paintStroke(lc, e.st, e.paths[f % e.paths.length]);
+    for (const e of cache[li]) if (inFrame(e.st, f)) paintStroke(lc, e.st, e.paths[f % e.paths.length]);
     oc.drawImage(lay, 0, 0);
   });
   return oc.getImageData(0, 0, W, H);
@@ -1305,7 +1405,7 @@ async function downloadGIF(){
   if (!totalStrokes()){ toast('Draw something first'); return; }
   toast('Rendering GIF…'); await new Promise(r => setTimeout(r, 30));
   try {
-    const F = Math.max(1, S.layers.some(L => L.visible && layerAmp(L) > 0) ? S.frames : 1);
+    const F = (S.layers.some(L => L.visible && layerAmp(L) > 0) || S.layers.some(L => L.visible && L.strokes.some(st => st.f !== undefined))) ? S.frames : 1;
     const k = Math.min(2, 1024 / Math.max(S.w, S.h));
     const frames = []; for (let f = 0; f < F; f++) frames.push(renderFrameTo(f, k));
     const W = frames[0].width, H = frames[0].height;
