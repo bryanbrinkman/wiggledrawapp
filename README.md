@@ -24,6 +24,10 @@ Open `index.html` in a browser, or serve the folder:
 npx serve .
 ```
 
+## Analytics
+
+The page loads Vercel Web Analytics (`/_vercel/insights/script.js`) on the deployed site only. Turn it on under the project's **Analytics** tab in the Vercel dashboard; nothing else is needed and no npm package is involved.
+
 ## Deploy to Vercel
 
 This is a static site, so Vercel needs no configuration beyond what's in `vercel.json`.
