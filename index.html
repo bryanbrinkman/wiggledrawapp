@@ -1218,6 +1218,7 @@ function updateStat(){
   syncHistoryButtons();
   if ($('code').classList.contains('open')) $('code').value = svg;
   updateBudget(svg);
+  changeHooks.forEach(fn => { try { fn(); } catch {} });
 }
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2200); }
 
@@ -1541,6 +1542,12 @@ function enterView(obj){
 }
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v=')) location.reload(); });
 
+// ---------- bridge for add-ons (the v2 in-page mint module) ----------
+const changeHooks = [];
+window.ChainPainter = {
+  svg: () => toSVG(), name: () => tokenName(), desc: () => abxDesc(), symbol: () => abxSymbol(), chain: () => S.abxChain,
+  strokes: () => totalStrokes(), bytes: () => budgetBytes(), onChange: fn => { changeHooks.push(fn); },
+};
 // ---------- boot ----------
 (async () => {
   let shared = null;

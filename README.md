@@ -46,6 +46,14 @@ vercel        # preview deployment
 vercel --prod # production deployment
 ```
 
+## v2 (unlisted): mint from the page with ABX
+
+`/v2` is the same app plus an in‑page ABX mint. In the ABX panel, connect a browser wallet (MetaMask, Rabby, Coinbase Wallet, Brave, or a wallet's in‑app browser; any injected EIP‑1193 provider, discovered via EIP‑6963), switch to the chosen network, **Preview** (predicted contract address, SVG size, gas estimate), then **Mint**. It sends one transaction to ABX's canonical `OneOfOneImageFactory.deployDeterministic(params, salt)` with the SVG and description stored inline as on‑chain metadata fields and the canonical renderer answering `tokenURI`, the same thing `abx deploy --onchain-uri` does. Defaults match the CLI: 5 % royalty with a 10 % cap, not burnable, plain ERC‑721, owner = minter = royalty receiver = your wallet.
+
+- `v2/mint.js` is dependency‑free (its own keccak‑256 and ABI encoder, verified against the Solidity ABI spec vectors). `v2/index.html` is generated: edit `index.html`, then run `node scripts/build-v2.mjs`.
+- The page is marked `noindex` and is not linked from the main app.
+- Not included yet: WalletConnect QR pairing (needs Reown's hosted SDK and a project id). Rehearse on Sepolia before mainnet.
+
 ## Sharing
 
 **Copy link** packs the entire project (layers, strokes, wiggle settings) into the URL fragment using deflate + base64url. Opening the link shows a clean viewer with the animation, **Download SVG**, **Copy link** and **Remix in ChainPainter**, which loads the drawing into the editor. Because the data lives after the `#`, it never reaches the server; the link is also a complete backup of the piece. A drawing that fits the 24 KB onchain budget makes a link of roughly 3–8 KB.
