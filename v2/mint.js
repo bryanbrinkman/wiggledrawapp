@@ -298,6 +298,14 @@ function setStatus(msg, kind){ if (statusEl){ statusEl.textContent = msg; status
 function el(tag, attrs = {}, ...kids){ const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)){ if (k === 'onclick') n.onclick = v; else if (k === 'oninput') n.oninput = v; else if (k === 'html') n.innerHTML = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; }
 const link = (href, text) => el('a', { href, target: '_blank', rel: 'noopener' }, text);
 function setMode(m){ mode = m; txState = null; try { localStorage.setItem(LS_MODE, m); } catch {} render(); }
+// Mainnet / Sepolia tabs drive the app's own Network select (#abxChain) so both stay in step.
+let lastMain = 'ethereum';
+function setNet(test){
+  const key = CP().chain(); if (!CHAINS[key].testnet) lastMain = key;
+  const target = test ? (/base/.test(key) ? 'base-sepolia' : 'sepolia') : (key === 'base-sepolia' ? 'base' : lastMain);
+  const sel = document.getElementById('abxChain'); if (sel && sel.value !== target){ sel.value = target; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+  txState = null; render();
+}
 function input(key, attrs){ return el('input', { type: 'text', value: form[key], oninput: e => { form[key] = e.target.value; if (txState && txState.stage === 'ready'){ txState = null; render(); } }, ...attrs }); }
 function collectionChooser(s){
   const colls = collsHere();
@@ -331,6 +339,10 @@ function render(){
   root.innerHTML = '';
   const c = wanted();
   root.append(el('h3', {}, 'Mint from this page ', el('span', { class: 'dim' }, 'v2 test')));
+  root.append(el('div', { class: 'modes nets' },
+    el('button', { class: 'small' + (!c.testnet ? ' on' : ''), 'data-net': 'mainnet', onclick: () => setNet(false) }, 'Mainnet'),
+    el('button', { class: 'small' + (c.testnet ? ' on' : ''), 'data-net': 'sepolia', onclick: () => setNet(true) }, 'Sepolia test'),
+    el('span', { class: 'hint' }, c.testnet ? ' ' + c.name + ' · free test ETH, nothing real.' : ' ' + c.name + ' · real funds.')));
   const tabs = el('div', { class: 'modes' },
     el('button', { class: 'small' + (mode === 'single' ? ' on' : ''), 'data-mode': 'single', onclick: () => setMode('single') }, 'Single 1/1'),
     el('button', { class: 'small' + (mode === 'collection' ? ' on' : ''), 'data-mode': 'collection', onclick: () => setMode('collection') }, 'Collection'),
@@ -390,10 +402,11 @@ function mount(){
   root = el('div', { class: 'mintbox', id: 'mintbox' });
   panel.insertBefore(root, panel.querySelector('p.hint'));
   const css = document.createElement('style');
-  css.textContent = '.mintbox{margin:10px 0 6px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox h3{font-size:14px;color:#fff;margin:0 0 6px}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox table.kv{font-size:12px;margin:6px 0;border-collapse:collapse}.mintbox table.kv td{padding:2px 8px 2px 0;color:#e8f4f3;vertical-align:top;word-break:break-all}.mintbox table.kv td:first-child{color:#cfe9e8;white-space:nowrap}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .modes{margin:0 0 8px}.mintbox .modes button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:4px 0}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 auto;min-width:0;max-width:100%}.mintbox .row input,.mintbox .row select{font-size:13px;padding:3px 6px;min-width:0;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .row input#collName,.mintbox .row input#collAbout{flex:1;min-width:160px}.mintbox .row input#collSize{width:5em}.mintbox a{color:#bfe9ff}';
+  css.textContent = '.mintbox{margin:10px 0 6px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox h3{font-size:14px;color:#fff;margin:0 0 6px}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox table.kv{font-size:12px;margin:6px 0;border-collapse:collapse}.mintbox table.kv td{padding:2px 8px 2px 0;color:#e8f4f3;vertical-align:top;word-break:break-all}.mintbox table.kv td:first-child{color:#cfe9e8;white-space:nowrap}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .modes{margin:0 0 8px}.mintbox .modes.nets{margin-bottom:4px}.mintbox .modes button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:4px 0}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 auto;min-width:0;max-width:100%}.mintbox .row input,.mintbox .row select{font-size:13px;padding:3px 6px;min-width:0;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .row input#collName,.mintbox .row input#collAbout{flex:1;min-width:160px}.mintbox .row input#collSize{width:5em}.mintbox a{color:#bfe9ff}';
   document.head.appendChild(css);
   render();
   CP().onChange(() => { if (txState && txState.stage === 'ready'){ txState = null; render(); } });
+  const sel = document.getElementById('abxChain'); if (sel) sel.addEventListener('change', () => { if (!CHAINS[sel.value].testnet) lastMain = sel.value; txState = null; render(); });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 
