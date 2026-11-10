@@ -9,5 +9,7 @@ must('src="tip-qr.png"', 'src="../tip-qr.png"');
 // Cache-bust mint.js by content hash so browsers pick up a new version right after each deploy.
 const ver = createHash('sha256').update(readFileSync(new URL('../v2/mint.js', import.meta.url))).digest('hex').slice(0, 8);
 must('</body>', '<script src="mint.js?v=' + ver + '" defer></script>\n</body>');
+// Build stamp, shown in the mint box header so a stale deploy or cached page is easy to spot.
+must('<meta name="robots" content="noindex,nofollow">', '<meta name="robots" content="noindex,nofollow">\n<meta name="cp-build" content="' + ver + '">');
 writeFileSync(new URL('../v2/index.html', import.meta.url), html);
 console.log('v2/index.html written (' + (html.length / 1024).toFixed(0) + ' KB)');

@@ -292,6 +292,7 @@ const short = a => a ? a.slice(0, 6) + '…' + a.slice(-4) : '';
 
 // ───────────────────────── UI ─────────────────────────
 let root = null, statusEl = null;
+const BUILD = ((document.querySelector('meta[name=cp-build]') || {}).content || '').slice(0, 7) || 'dev';
 function setStatus(msg, kind){ if (statusEl){ statusEl.textContent = msg; statusEl.dataset.kind = kind || ''; } }
 function el(tag, attrs = {}, ...kids){ const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)){ if (k === 'onclick') n.onclick = v; else if (k === 'oninput') n.oninput = v; else if (k === 'onchange') n.onchange = v; else if (k === 'html') n.innerHTML = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; }
 const link = (href, text) => el('a', { href, target: '_blank', rel: 'noopener' }, text);
@@ -310,7 +311,7 @@ function render(){
   root.innerHTML = '';
   const c = wanted(), t = txState, colls = collsHere();
   if (!selected() && pick !== 'existing') pick = (colls[0] || {}).address || '';
-  root.append(el('div', { class: 'head' }, el('h3', {}, 'Mint with ABX ', el('span', { class: 'dim' }, 'v2 test')),
+  root.append(el('div', { class: 'head' }, el('h3', {}, 'Mint with ABX ', el('span', { class: 'dim' }, 'v2 test · build ' + BUILD)),
     el('div', { class: 'nets' },
       el('button', { class: 'small' + (!c.testnet ? ' on' : ''), 'data-net': 'mainnet', onclick: () => setNet(false) }, 'Mainnet'),
       el('button', { class: 'small' + (c.testnet ? ' on' : ''), 'data-net': 'sepolia', onclick: () => setNet(true) }, 'Sepolia test'))));
