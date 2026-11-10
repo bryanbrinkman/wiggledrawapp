@@ -12,9 +12,9 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Save / open projects as JSON, autosave to the browser
 - Download or copy the finished SVG
 - **Copy link** makes a shareable URL that plays the animation; the whole project is compressed into the link itself, so nothing is uploaded and anyone can hit **Remix** to open it in the editor
-- Mint‑ready export for [Transient Labs onchain art](https://docs.transientlabs.xyz/integrations/onchain-art): one‑click token URI with a live 24 KB budget meter
+- **Mint onchain** from the page with [ABX by Art Blocks](https://docs.abx.io/) and a browser wallet: create a contract, then mint each drawing into it, image and metadata stored fully on-chain, with a live 24 KB budget meter
 
-The whole app is a single file: [`index.html`](index.html). No build step, no dependencies.
+The whole app is a single file: [`index.html`](index.html). No build step, no dependencies (the mint module ships its own keccak‑256 and ABI encoder).
 
 ## Run it locally
 
@@ -46,34 +46,22 @@ vercel        # preview deployment
 vercel --prod # production deployment
 ```
 
-## v2 (unlisted): mint from the page with ABX
-
-`/v2` is the same drawing app with the **Mint onchain** section replaced by a two‑step ABX mint box (Transient Labs and Manifold are hidden there; the main app still has them). Connect a browser wallet (MetaMask, Rabby, Coinbase Wallet, Brave, or a wallet's in‑app browser; any injected EIP‑1193 provider, discovered via EIP‑6963), pick **Mainnet** or **Sepolia test**, then:
-
-1. **Contract / collection name → Create contract.** One transaction to ABX's canonical `SeriesImageFactory.deployDeterministic(params, salt)` deploys an empty Series contract (one contract, many artworks, room for 10,000; the cap can be lowered later with the `abx` tool, never raised). Defaults match the CLI: 5 % royalty with a 10 % cap, not burnable, plain ERC‑721, owner = payee = royalty receiver = your wallet; the symbol is derived from the name. Contracts you create are remembered in the browser per network and appear in a **Contract** dropdown; **Add a contract I deployed elsewhere** checks an address on‑chain (owner, name, symbol, size, minted count) and remembers it too.
-2. **Artwork name → Mint artwork.** One `multicall([setTokenField(id, image), setTokenField(id, name), setTokenField(id, description), mint(you)])` on the selected contract stores the SVG, name and description inline on‑chain and mints the next id to you, atomically. Only the contract owner can mint. The page reads the id back from the `Transfer` log and links the explorer and OpenSea. The artwork name is the project Title. **More options** under it holds the description, traits (stored as an OpenSea-style `attributes` JSON array; plain numbers become numeric values) and an external link, each written on-chain as its own metadata field (`description`, `attributes`, `external_url`). Traits and link are remembered in the browser for the next mint.
-
-- `v2/mint.js` is dependency‑free (its own keccak‑256 and ABI encoder, verified against the Solidity ABI spec vectors and the ABX SDK's generated ABI). `v2/index.html` is generated: edit `index.html`, then run `node scripts/build-v2.mjs` (it also cache‑busts `mint.js` by content hash).
-- The page is marked `noindex` and is not linked from the main app.
-- Not included yet: WalletConnect QR pairing (needs Reown's hosted SDK and a project id). Rehearse on Sepolia before mainnet.
-
 ## Sharing
 
 **Copy link** packs the entire project (layers, strokes, wiggle settings) into the URL fragment using deflate + base64url. Opening the link shows a clean viewer with the animation, **Download SVG**, **Copy link** and **Remix in ChainPainter**, which loads the drawing into the editor. Because the data lives after the `#`, it never reaches the server; the link is also a complete backup of the piece. A drawing that fits the 24 KB onchain budget makes a link of roughly 3–8 KB.
 
 ## Minting onchain
 
-The **Mint onchain** section has a button per platform. Pick one and it expands into a guided flow. The 24 KB meter under the canvas switches to that platform's budget, and drawing is blocked at the limit.
+The **Mint onchain** section mints straight from the page with ABX (Art Blocks) and a browser wallet (MetaMask, Rabby, Coinbase Wallet, Brave, or a wallet's in‑app browser; any injected EIP‑1193 provider, discovered via EIP‑6963). Pick **Mainnet** or **Sepolia test** at the top (Ethereum by default; the hidden network setting also knows Base and Arbitrum, and Base pairs with Base Sepolia), connect, then:
 
-**Transient Labs** counts the whole base64 token URI against 24 KB. The flow builds metadata per the [Transient Labs onchain art guide](https://docs.transientlabs.xyz/integrations/onchain-art) and [metadata structure](https://docs.transientlabs.xyz/integrations/metadata-structure): the SVG embedded as `data:image/svg+xml;base64,…` in `image`, plus `name`, `description`, `attributes`, `media` and `image_sha256`, all wrapped as `data:application/json;base64,…`. **Copy token URI** puts that string on your clipboard to paste into Transient Labs Studio.
+1. **Contract name → Create contract.** One transaction to ABX's canonical `SeriesImageFactory.deployDeterministic(params, salt)` deploys an empty Series contract (one contract, many artworks, room for 10,000; the cap can be lowered later with the `abx` tool, never raised). Defaults match the CLI: 5 % royalty with a 10 % cap, not burnable, plain ERC‑721, owner = payee = royalty receiver = your wallet; the symbol is derived from the name. Contracts you create are remembered in the browser per network and appear in a **Contract** dropdown; **Add a contract I deployed elsewhere** checks an address on‑chain (owner, name, symbol, size, minted count) and remembers it too.
+2. **Artwork name → Mint artwork.** One `multicall([setTokenField(id, image), setTokenField(id, name), …, mint(you)])` on the selected contract stores the SVG and metadata inline on‑chain and mints the next id to you, atomically. Only the contract owner can mint. The page reads the id back from the `Transfer` log and links the explorer and OpenSea. The artwork name is the project Title. **More options** holds the description, traits (stored as an OpenSea‑style `attributes` JSON array; plain numbers become numeric values) and an external link, each written as its own on‑chain field (`description`, `attributes`, `external_url`). Traits and link are remembered for the next mint.
 
-**ABX (Art Blocks)** counts the raw SVG against 24 KB, so roughly 1.8× more art fits. ABX deploys from the command line with your browser wallet ([deploy guide](https://docs.abx.io/docs/using-abx/guides/deploy-a-digital-asset)). The flow takes a symbol and network, then gives you a ready‑to‑paste dry‑run command, the real `--sign` command, and a prefilled prompt for a coding agent using the ABX skill. It defaults to Ethereum mainnet (production beta); Base and Arbitrum are cheaper, and Sepolia or Base Sepolia are free rehearsals. ABX is prerelease, so check `abx deploy --help` if a flag has moved.
+ABX counts the raw SVG against 24 KB; the meter under the canvas shows it, and drawing is blocked (the canvas flashes red) at the limit. The canonical ABX metadata renderer answers `tokenURI`, so marketplaces read everything from the chain. ABX is prerelease: rehearse on Sepolia first. Not included: WalletConnect QR pairing (needs Reown's hosted SDK and a project id).
 
-**Manifold** goes fully onchain through your own Manifold Creator contract instead of Studio's Arweave upload. The flow copies the same self‑contained token URI, then walks you through calling `mintBase(to, uri)` (or `setTokenURI`) on your contract from the block explorer's *Write as Proxy* tab as the owner. The meter counts the token URI against 24 KB as a gas guide: it warns when over but never blocks, since a bigger token simply costs more to write. Base is cheap; Ethereum mainnet is not.
+**Download PNG** in Export & share saves a 2048 px still of the first frame, and **Download GIF** saves a looping GIF of the wiggle at 2× (up to 1024 px) for posts and previews. Both are built in the browser.
 
-**Download PNG** in Export & share saves a 2048 px still of the first frame, and **Download GIF** saves a looping GIF of the wiggle at 2× (up to 1024 px) for posts and previews. Both are built in the browser with no dependencies.
-
-When over budget, **Fit to 24 KB** re‑simplifies strokes (and drops frames if it must) until the piece fits the selected platform. Fit can be undone until you draw again.
+When over budget, **Fit to 24 KB** re‑simplifies strokes (and drops frames if it must) until the piece fits. Fit can be undone until you draw again.
 
 ## How the export works
 
