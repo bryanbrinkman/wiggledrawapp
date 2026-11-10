@@ -128,11 +128,19 @@ function buildParams({ owner, name, symbol, description, svg }){
     contractFields: description ? [inlineField('description', description)] : [] };
 }
 // Per-token fields for one piece of a collection. The renderer falls back to "{collection} #{id}" when no name is set.
-const pieceFields = (tokenId, { name, description, svg }) => [
+const pieceFields = (tokenId, { name, description, svg, attributes, externalUrl }) => [
   { tokenId, ...inlineField('image', svg) },
   ...(name ? [{ tokenId, ...inlineField('name', name) }] : []),
   ...(description ? [{ tokenId, ...inlineField('description', description) }] : []),
+  ...(attributes ? [{ tokenId, ...inlineField('attributes', attributes) }] : []),   // JSON array, embedded verbatim by the renderer
+  ...(externalUrl ? [{ tokenId, ...inlineField('external_url', externalUrl) }] : []),
 ];
+// Traits → OpenSea-style attributes JSON. Plain numbers become numeric values; blank rows are dropped.
+function attributesJSON(traits){
+  const rows = (traits || []).map(t => ({ k: (t.k || '').trim(), v: (t.v || '').trim() })).filter(t => t.k && t.v);
+  if (!rows.length) return '';
+  return JSON.stringify(rows.map(t => ({ trait_type: t.k, value: /^-?\d+(\.\d+)?$/.test(t.v) ? Number(t.v) : t.v })));
+}
 // Collection (Series): deploy once; optionally mint the current drawing as token #0 in the same transaction (piece=null → empty).
 function buildSeriesParams({ owner, name, symbol, about, size, piece }){
   return { owner, ...baseParams(owner, name, symbol), maxInvocations: size, primaryPayee: owner, minter: ZERO, paused: false, mintTo: piece ? owner : ZERO, mintCount: piece ? 1 : 0,
@@ -200,7 +208,11 @@ const $ = id => document.getElementById(id);
 function wanted(){ return CHAINS[CP().chain()] || CHAINS.ethereum; }
 const DEFAULT_SIZE = 10000;              // room for 10,000 artworks per contract; can be lowered later with the abx tool, never raised
 let pick = '';                           // selected contract address, or 'existing' while adding one by address
-const form = { collName: '', existing: '' };
+const LS_META = 'chainpainter:v2:meta';
+const form = { collName: '', existing: '', open: false, traits: [], link: '' };
+try { const m = JSON.parse(localStorage.getItem(LS_META) || '{}'); if (Array.isArray(m.traits)) form.traits = m.traits.filter(t => t && typeof t.k === 'string').slice(0, 20); if (typeof m.link === 'string') form.link = m.link; } catch {}
+const saveMeta = () => { try { localStorage.setItem(LS_META, JSON.stringify({ traits: form.traits, link: form.link })); } catch {} };
+const validLink = u => !u || /^https?:\/\/\S+$/i.test(u);
 const symbolFor = name => { const s = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); return s || 'ART'; };
 const selected = () => collsHere().find(c => c.address === pick) || null;
 async function requireCode(addr, what){ const code = await rpc('eth_getCode', [addr, 'latest']); if (!code || code === '0x') throw new Error(what); }
@@ -245,7 +257,8 @@ async function mintArtwork(){
     if (owner.toLowerCase() !== account.toLowerCase()) throw new Error('This wallet (' + short(account) + ') does not own ' + coll.name + '; its owner is ' + short(owner) + '.');
     const next = decodeUint(await call(coll.address, view('nextTokenId'))), max = decodeUint(await call(coll.address, view('maxInvocations')));
     if (next >= max) throw new Error(coll.name + ' is full: all ' + max + ' artworks are minted. Create a new contract.');
-    const svg = CP().svg(); const piece = { name: CP().name(), description: CP().desc(), svg };
+    const link = form.link.trim(); if (!validLink(link)) throw new Error('The external link must start with http:// or https://.');
+    const svg = CP().svg(); const piece = { name: CP().name(), description: CP().desc(), svg, attributes: attributesJSON(form.traits), externalUrl: link };
     const { hash, receipt } = await send(coll.address, encodeMintPiece(next, piece, account));
     const ids = mintedIds(receipt, coll.address); const tokenId = ids.length ? ids[0] : next;
     remember({ ...coll, minted: Number(tokenId) + 1 });
@@ -332,7 +345,25 @@ function render(){
   const nameEl = el('input', { type: 'text', id: 'artName', maxlength: '80', placeholder: 'untitled', value: ($('tokName') || {}).value || '', oninput: e => { const tn = $('tokName'); if (tn){ tn.value = e.target.value; tn.dispatchEvent(new Event('input', { bubbles: true })); } } });
   s2.append(el('div', { class: 'row' }, el('label', {}, 'Artwork name ', nameEl),
     el('button', { class: 'primary', id: 'mintBtn', onclick: mintArtwork, ...(ready && selected() ? {} : { disabled: '' }) }, 'Mint artwork')));
-  if (selected()) s2.append(el('div', { class: 'hint' }, 'Mints this drawing as the next piece of ', el('b', {}, selected().name), '. The description above goes with it. One transaction; the wallet shows the exact gas.'));
+  const nTraits = (form.traits || []).filter(t => (t.k || '').trim() && (t.v || '').trim()).length;
+  const desc = ($('tokDesc') || {}).value || '';
+  const extras = [desc.trim() ? 'description' : '', nTraits ? nTraits + ' trait' + (nTraits > 1 ? 's' : '') : '', form.link.trim() ? 'link' : ''].filter(Boolean);
+  s2.append(el('div', { class: 'row' }, el('button', { class: 'small', id: 'moreBtn', 'aria-expanded': String(form.open), onclick: () => { form.open = !form.open; render(); } }, (form.open ? '▴ ' : '▾ ') + 'More options'),
+    el('span', { class: 'hint' }, extras.length ? 'Includes ' + extras.join(', ') + '.' : 'Description, traits, external link.')));
+  if (form.open){
+    const o = el('div', { class: 'opts', id: 'opts' }); s2.append(o);
+    const descEl = el('textarea', { id: 'artDesc', rows: '2', maxlength: '500', placeholder: 'Drawn with ChainPainter', oninput: e => { const td = $('tokDesc'); if (td){ td.value = e.target.value; td.dispatchEvent(new Event('input', { bubbles: true })); } } }); descEl.value = desc;
+    o.append(el('label', { class: 'col' }, 'Description', descEl));
+    const tr = el('div', { class: 'traits' }); o.append(el('div', { class: 'lbl' }, 'Traits ', el('span', { class: 'hint' }, 'shown as properties on marketplaces')), tr);
+    form.traits.forEach((t, i) => tr.append(el('div', { class: 'trait' },
+      el('input', { type: 'text', class: 'tk', placeholder: 'Trait, e.g. Mood', maxlength: '40', value: t.k || '', oninput: e => { form.traits[i].k = e.target.value; saveMeta(); } }),
+      el('input', { type: 'text', class: 'tv', placeholder: 'Value, e.g. Grumpy', maxlength: '80', value: t.v || '', oninput: e => { form.traits[i].v = e.target.value; saveMeta(); } }),
+      el('button', { class: 'small x', title: 'Remove trait', onclick: () => { form.traits.splice(i, 1); saveMeta(); render(); } }, '×'))));
+    if (form.traits.length < 20) tr.append(el('button', { class: 'small', id: 'addTrait', onclick: () => { form.traits.push({ k: '', v: '' }); saveMeta(); render(); setTimeout(() => { const ks = root.querySelectorAll('.trait .tk'); ks[ks.length - 1] && ks[ks.length - 1].focus(); }, 0); } }, '+ Add trait'));
+    o.append(el('label', { class: 'col' }, 'External link', el('input', { type: 'url', id: 'artLink', placeholder: 'https://… (optional, e.g. your site or the share link)', value: form.link, oninput: e => { form.link = e.target.value; saveMeta(); } })));
+    o.append(el('div', { class: 'hint' }, 'All of this is stored on-chain with the artwork as metadata fields; more text costs a little more gas. Traits and link are remembered for the next mint; clear them if the next piece differs.'));
+  }
+  if (selected()) s2.append(el('div', { class: 'hint' }, 'Mints this drawing as the next piece of ', el('b', {}, selected().name), '. One transaction; the wallet shows the exact gas.'));
   // progress / result
   const r = el('div', { class: 'result' }); root.append(r);
   if (t && t.stage === 'signing') r.append(el('div', { class: 'hint' }, 'Estimating gas, then confirm in your wallet…'));
@@ -343,7 +374,7 @@ function render(){
       const id = t.tokenId.toString();
       r.append(el('b', { class: 'ok' }, '✓ Minted. '), el('b', {}, t.piece.name), ' is #' + id + ' of ' + t.coll.name + ' · ', link(t.chain.explorer + '/address/' + t.contract, 'contract ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'));
       if (t.chain.opensea) r.append(' · ', link('https://opensea.io/assets/' + t.chain.opensea + '/' + t.contract.toLowerCase() + '/' + id, 'OpenSea ↗'));
-      r.append(el('div', { class: 'hint' }, (t.bytes / 1024).toFixed(1) + ' KB of SVG stored on-chain. Marketplaces may take a few minutes to index. Draw the next one and mint again.'));
+      r.append(el('div', { class: 'hint' }, (t.bytes / 1024).toFixed(1) + ' KB of SVG stored on-chain' + (t.piece.attributes ? ', with ' + JSON.parse(t.piece.attributes).length + ' traits' : '') + '. Marketplaces may take a few minutes to index. Draw the next one and mint again.'));
     }
   }
   else if (t && t.stage === 'error') r.append(el('div', { class: 'err' }, t.msg), t.hash ? link(c.explorer + '/tx/' + t.hash, ' transaction ↗') : '');
@@ -357,14 +388,15 @@ function mount(){
   const plats = host.querySelector('.plats'); host.insertBefore(root, plats || null);
   const abx = host.querySelector('[data-plat=abx]'); if (abx && abx.getAttribute('aria-pressed') !== 'true') abx.click(); // ABX byte budget (raw SVG vs 24 KB)
   const css = document.createElement('style');
-  css.textContent = '.export.mint .plats,.export.mint .panel{display:none!important}.mintbox{margin:6px 0 4px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px}.mintbox h3{font-size:14px;color:#fff;margin:0}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .nets button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .block{margin:10px 0;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:4px 0}.mintbox .row.wallet{margin-top:8px;font-size:13px;color:#e8f4f3}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 280px;min-width:0;max-width:100%;white-space:nowrap}.mintbox .row input,.mintbox .row select{font-size:13px;padding:4px 6px;min-width:140px;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .result{margin:6px 0;font-size:13px;color:#e8f4f3}.mintbox a{color:#bfe9ff}.mintbox .hint{font-size:12px;opacity:.9}.mintbox .foot{margin:8px 0 4px}';
+  css.textContent = '.export.mint .plats,.export.mint .panel,.export.mint .row:has(#tokDesc){display:none!important}.mintbox{margin:6px 0 4px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px}.mintbox h3{font-size:14px;color:#fff;margin:0}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .nets button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .block{margin:10px 0;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:4px 0}.mintbox .row.wallet{margin-top:8px;font-size:13px;color:#e8f4f3}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 280px;min-width:0;max-width:100%;white-space:nowrap}.mintbox .row input,.mintbox .row select{font-size:13px;padding:4px 6px;min-width:140px;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .result{margin:6px 0;font-size:13px;color:#e8f4f3}.mintbox a{color:#bfe9ff}.mintbox .hint{font-size:12px;opacity:.9}.mintbox .foot{margin:8px 0 4px}.mintbox .opts{margin:6px 0 2px;padding:8px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.15)}.mintbox .opts label.col{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#e8f4f3;margin:0 0 8px}.mintbox .opts textarea,.mintbox .opts input{display:block;font-family:inherit;font-size:13px;line-height:1.35;padding:4px 6px;width:100%;height:auto;box-sizing:border-box;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge)}.mintbox .opts textarea{resize:vertical;min-height:44px}.mintbox .opts .lbl{font-size:12px;color:#e8f4f3;margin:0 0 4px}.mintbox .trait{display:flex;gap:6px;align-items:center;margin:0 0 4px}.mintbox .trait .tk{flex:1 1 40%}.mintbox .trait .tv{flex:1 1 60%}.mintbox .trait .x{margin:0;padding:2px 8px}.mintbox .traits{margin:0 0 8px}';
   document.head.appendChild(css);
   render();
   const tn = $('tokName'); if (tn) tn.addEventListener('input', () => { const a = $('artName'); if (a && a.value !== tn.value) a.value = tn.value; });
+  const td = $('tokDesc'); if (td) td.addEventListener('input', () => { const a = $('artDesc'); if (a && a.value !== td.value) a.value = td.value; });
   const sel = $('abxChain'); if (sel) sel.addEventListener('change', () => { if (!CHAINS[sel.value].testnet) lastMain = sel.value; txState = null; if (!selected()) pick = (collsHere()[0] || {}).address || ''; render(); });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 
 // Test hooks (pure functions only; nothing here touches a wallet).
-window.__abxMint = { keccakHex, utf8, encodeCall, encodeDeploy, encodeSeriesDeploy, encodePredict, encodeMintPiece, buildParams, buildSeriesParams, pieceFields, selector, PARAMS_T, SERIES_PARAMS_T, FACTORY, SERIES_FACTORY, RENDERER, checksum, tag, decodeString, mintedIds, TRANSFER_TOPIC };
+window.__abxMint = { attributesJSON, keccakHex, utf8, encodeCall, encodeDeploy, encodeSeriesDeploy, encodePredict, encodeMintPiece, buildParams, buildSeriesParams, pieceFields, selector, PARAMS_T, SERIES_PARAMS_T, FACTORY, SERIES_FACTORY, RENDERER, checksum, tag, decodeString, mintedIds, TRANSFER_TOPIC };
 })();
