@@ -1,13 +1,12 @@
 /* ChainPainter v2 — mint from the page with ABX (Art Blocks) and a browser wallet.
  *
- * No dependencies. Two modes, both mirroring the `abx` command-line tool:
- *  - Single 1/1: one transaction to the canonical OneOfOneImageFactory, `deployDeterministic(params, salt)`,
- *    with the SVG and description stored inline as on-chain metadata fields and the canonical renderer
- *    answering tokenURI.
- *  - Collection: one transaction to the SeriesImageFactory deploys a Series contract with the drawing as
- *    piece #0; each later drawing is added with one `multicall([setTokenField×n, mint(owner)])` on that
- *    contract (owner only; the contract chooses the next id). Addresses are the ABX canonical CREATE2 set
- *    (same on every chain). Collections are remembered in localStorage, per network.
+ * No dependencies; mirrors what the `abx` command-line tool sends.
+ *  - Create contract: one transaction to the canonical SeriesImageFactory, `deployDeterministic(params, salt)`,
+ *    deploys an empty Series contract (one contract, many artworks) owned by the wallet.
+ *  - Mint artwork: one `multicall([setTokenField image/name/description, mint(owner)])` on that contract
+ *    stores the SVG inline on-chain and mints the next id to the wallet (owner only). The canonical renderer
+ *    answers tokenURI. Addresses are the ABX canonical CREATE2 set (same on every chain). Contracts are
+ *    remembered in localStorage, per network. (The 1/1 factory encoder is kept for tests.)
  *
  * Wallets: any injected EIP-1193 provider (MetaMask, Rabby, Coinbase Wallet, Brave, in-app browsers),
  * discovered with EIP-6963. The JSON-RPC reads go through the wallet's own provider.
@@ -134,10 +133,10 @@ const pieceFields = (tokenId, { name, description, svg }) => [
   ...(name ? [{ tokenId, ...inlineField('name', name) }] : []),
   ...(description ? [{ tokenId, ...inlineField('description', description) }] : []),
 ];
-// Collection (Series): deploy once with the current drawing minted as token #0 in the same transaction.
+// Collection (Series): deploy once; optionally mint the current drawing as token #0 in the same transaction (piece=null → empty).
 function buildSeriesParams({ owner, name, symbol, about, size, piece }){
-  return { owner, ...baseParams(owner, name, symbol), maxInvocations: size, primaryPayee: owner, minter: ZERO, paused: false, mintTo: owner, mintCount: 1,
-    tokenFields: pieceFields(0, piece), contractFields: about ? [inlineField('description', about)] : [] };
+  return { owner, ...baseParams(owner, name, symbol), maxInvocations: size, primaryPayee: owner, minter: ZERO, paused: false, mintTo: piece ? owner : ZERO, mintCount: piece ? 1 : 0,
+    tokenFields: piece ? pieceFields(0, piece) : [], contractFields: about ? [inlineField('description', about)] : [] };
 }
 const encodeDeploy = (params, salt) => encodeCall('deployDeterministic', [PARAMS_T, { type: 'bytes32' }], [params, salt]);
 const encodeSeriesDeploy = (params, salt) => encodeCall('deployDeterministic', [SERIES_PARAMS_T, { type: 'bytes32' }], [params, salt]);
@@ -158,7 +157,7 @@ function mintedIds(receipt, contract){ return (receipt.logs || []).filter(l => l
 function saltFor(owner){ const e = new Uint8Array(12); crypto.getRandomValues(e); return owner.toLowerCase() + hexOf(e); } // 20-byte deployer guard + 12 bytes entropy
 
 // ───────────────────────── remembered collections (this browser) ─────────────────────────
-const LS_COLL = 'chainpainter:collections', LS_MODE = 'chainpainter:mintMode';
+const LS_COLL = 'chainpainter:collections';
 function loadColls(){ try { const v = JSON.parse(localStorage.getItem(LS_COLL) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
 function saveColls(list){ try { localStorage.setItem(LS_COLL, JSON.stringify(list)); } catch {} }
 function remember(c){ const list = loadColls().filter(x => !(x.chain === c.chain && x.address.toLowerCase() === c.address.toLowerCase())); list.unshift(c); saveColls(list.slice(0, 50)); }
@@ -197,216 +196,172 @@ async function switchChain(key){
 
 // ───────────────────────── mint flow ─────────────────────────
 const CP = () => window.ChainPainter; // bridge exposed by the app
+const $ = id => document.getElementById(id);
 function wanted(){ return CHAINS[CP().chain()] || CHAINS.ethereum; }
-let mode = 'single'; try { if (localStorage.getItem(LS_MODE) === 'collection') mode = 'collection'; } catch {}
-let pick = 'new';                         // 'new' | 'existing' | a remembered collection address
-const form = { collName: '', about: '', size: '10', existing: '' };
-function symbolFor(name){ const raw = document.getElementById('symbol'); const s = ((raw && raw.value) || name).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); return s || 'ART'; }
+const DEFAULT_SIZE = 10000;              // room for 10,000 artworks per contract; can be lowered later with the abx tool, never raised
+let pick = '';                           // selected contract address, or 'existing' while adding one by address
+const form = { collName: '', existing: '' };
+const symbolFor = name => { const s = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); return s || 'ART'; };
 const selected = () => collsHere().find(c => c.address === pick) || null;
 async function requireCode(addr, what){ const code = await rpc('eth_getCode', [addr, 'latest']); if (!code || code === '0x') throw new Error(what); }
-async function estimate(to, data){
+async function send(to, data){
   const gas = BigInt(await rpc('eth_estimateGas', [{ from: account, to, data }]));
-  let feeWei = null; try { feeWei = gas * BigInt(await rpc('eth_gasPrice')); } catch {}
-  return { gas, feeWei };
+  const hash = await rpc('eth_sendTransaction', [{ from: account, to, data, value: '0x0', gas: '0x' + ((gas * 125n) / 100n).toString(16) }]);
+  txState = { ...txState, stage: 'pending', hash }; render();
+  let receipt = null;
+  for (let i = 0; i < 400 && !receipt; i++){ await new Promise(r => setTimeout(r, 3000)); receipt = await rpc('eth_getTransactionReceipt', [hash]).catch(() => null); }
+  if (!receipt) throw new Error('Still pending after 20 minutes. Check the explorer link.');
+  if (receipt.status !== '0x1') throw new Error('The transaction reverted. Nothing changed; gas was spent.');
+  return { hash, receipt };
 }
-async function preview(){
-  const c = wanted(); busy = true; txState = { stage: 'preview' }; render();
+// Create contract: deploy an empty Series (no artwork yet) via the canonical factory.
+async function createContract(){
+  const c = wanted(); const name = form.collName.trim();
+  if (!name){ setStatus('Give the contract a name first.', 'err'); return; }
+  busy = true; txState = { stage: 'signing', kind: 'contract', chain: c, name }; render();
   try {
-    if (!CP().strokes()) throw new Error('Draw something first.');
-    const svg = CP().svg(), bytes = utf8(svg).length;
-    const piece = { name: CP().name(), description: CP().desc(), svg };
-    let t;
-    if (mode === 'single'){
-      await requireCode(FACTORY, 'The ABX factory is not deployed on ' + c.name + ' yet.');
-      const params = buildParams({ owner: account, name: piece.name, symbol: symbolFor(piece.name), description: piece.description, svg });
-      const salt = saltFor(account);
-      const predicted = decodeAddress(await call(FACTORY, encodePredict(salt)));
-      t = { kind: 'single', to: FACTORY, params, salt, predicted, data: encodeDeploy(params, salt), tokenId: 0n };
-    } else if (pick === 'new'){
-      const name = form.collName.trim(); if (!name) throw new Error('Give the collection a name.');
-      const size = Number(form.size); if (!Number.isInteger(size) || size < 1 || size > 100000) throw new Error('Collection size must be a whole number from 1 to 100000.');
-      await requireCode(SERIES_FACTORY, 'The ABX series factory is not deployed on ' + c.name + ' yet.');
-      const params = buildSeriesParams({ owner: account, name, symbol: symbolFor(name), about: form.about.trim(), size, piece });
-      const salt = saltFor(account);
-      const predicted = decodeAddress(await call(SERIES_FACTORY, encodePredict(salt)));
-      t = { kind: 'series', to: SERIES_FACTORY, params, salt, predicted, data: encodeSeriesDeploy(params, salt), tokenId: 0n, size, coll: { chain: CP().chain(), address: predicted, name, symbol: params.symbol, size } };
-    } else {
-      const coll = selected(); if (!coll) throw new Error('Pick a collection, or create one.');
-      await requireCode(coll.address, 'No contract at ' + coll.address + ' on ' + c.name + '.');
-      const owner = decodeAddress(await call(coll.address, view('owner')));
-      if (owner.toLowerCase() !== account.toLowerCase()) throw new Error('This wallet (' + short(account) + ') does not own ' + coll.name + '; its owner is ' + short(owner) + '. Only the owner can add pieces.');
-      const next = decodeUint(await call(coll.address, view('nextTokenId'))), max = decodeUint(await call(coll.address, view('maxInvocations')));
-      if (next >= max) throw new Error(coll.name + ' is full: all ' + max + ' pieces are minted. Create a new collection for more.');
-      t = { kind: 'piece', to: coll.address, contract: coll.address, tokenId: next, max, coll, data: encodeMintPiece(next, piece, account), params: { name: piece.name, symbol: coll.symbol } };
-    }
-    txState = { stage: 'ready', ...t, piece, ...(await estimate(t.to, t.data)), bytes, chain: c };
-  } catch (e){ txState = { stage: 'error', msg: friendly(e) }; }
+    await requireCode(SERIES_FACTORY, 'ABX is not deployed on ' + c.name + ' yet.');
+    const params = buildSeriesParams({ owner: account, name, symbol: symbolFor(name), about: '', size: DEFAULT_SIZE, piece: null });
+    const salt = saltFor(account);
+    const predicted = decodeAddress(await call(SERIES_FACTORY, encodePredict(salt)));
+    const { hash, receipt } = await send(SERIES_FACTORY, encodeSeriesDeploy(params, salt));
+    const code = await rpc('eth_getCode', [predicted, 'latest']).catch(() => '0x');
+    if (!code || code === '0x') throw new Error('Confirmed, but no contract found at ' + predicted + '. Check the transaction.');
+    const coll = { chain: CP().chain(), address: predicted, name, symbol: params.symbol, size: DEFAULT_SIZE, minted: 0 };
+    remember(coll); pick = predicted; form.collName = '';
+    txState = { stage: 'done', kind: 'contract', chain: c, hash, receipt, contract: predicted, coll };
+  } catch (e){ txState = { stage: 'error', kind: 'contract', chain: c, msg: friendly(e), hash: txState.hash }; }
   busy = false; render();
 }
-async function mint(){
-  const t = txState; if (!t || t.stage !== 'ready') return;
-  busy = true; txState = { ...t, stage: 'signing' }; render();
+// Mint artwork: set the next token's fields and mint it to you, atomically, on the selected contract.
+async function mintArtwork(){
+  const c = wanted(); const coll = selected();
+  if (!coll){ setStatus('Create a contract first, or pick one.', 'err'); return; }
+  if (!CP().strokes()){ setStatus('Draw something first.', 'err'); return; }
+  busy = true; txState = { stage: 'signing', kind: 'artwork', chain: c, coll }; render();
   try {
-    const gasLimit = '0x' + ((t.gas * 125n) / 100n).toString(16);
-    const hash = await rpc('eth_sendTransaction', [{ from: account, to: t.to, data: t.data, value: '0x0', gas: gasLimit }]);
-    txState = { ...t, stage: 'pending', hash }; render();
-    let receipt = null;
-    for (let i = 0; i < 400 && !receipt; i++){ await new Promise(r => setTimeout(r, 3000)); receipt = await rpc('eth_getTransactionReceipt', [hash]).catch(() => null); }
-    if (!receipt) throw new Error('Still pending after 20 minutes. Check the explorer link.');
-    if (receipt.status !== '0x1') throw new Error('The transaction reverted. Nothing was minted; gas was spent.');
-    const contract = t.contract || t.predicted;
-    const ids = mintedIds(receipt, contract);
-    const tokenId = ids.length ? ids[0] : t.tokenId;
-    let live = true;
-    if (t.kind !== 'piece'){ const code = await rpc('eth_getCode', [contract, 'latest']).catch(() => '0x'); live = !!code && code !== '0x'; }
-    if (t.kind === 'series' && live){ remember({ ...t.coll, minted: 1 }); pick = t.coll.address; }
-    if (t.kind === 'piece'){ remember({ ...t.coll, minted: Number(tokenId) + 1 }); }
-    txState = { ...t, stage: 'done', hash, receipt, live, contract, tokenId };
-  } catch (e){ txState = { ...t, stage: 'error', msg: friendly(e), hash: txState.hash }; }
+    await requireCode(coll.address, 'No contract at ' + coll.address + ' on ' + c.name + '.');
+    const owner = decodeAddress(await call(coll.address, view('owner')));
+    if (owner.toLowerCase() !== account.toLowerCase()) throw new Error('This wallet (' + short(account) + ') does not own ' + coll.name + '; its owner is ' + short(owner) + '.');
+    const next = decodeUint(await call(coll.address, view('nextTokenId'))), max = decodeUint(await call(coll.address, view('maxInvocations')));
+    if (next >= max) throw new Error(coll.name + ' is full: all ' + max + ' artworks are minted. Create a new contract.');
+    const svg = CP().svg(); const piece = { name: CP().name(), description: CP().desc(), svg };
+    const { hash, receipt } = await send(coll.address, encodeMintPiece(next, piece, account));
+    const ids = mintedIds(receipt, coll.address); const tokenId = ids.length ? ids[0] : next;
+    remember({ ...coll, minted: Number(tokenId) + 1 });
+    txState = { stage: 'done', kind: 'artwork', chain: c, hash, receipt, contract: coll.address, coll, tokenId, piece, bytes: utf8(svg).length };
+  } catch (e){ txState = { stage: 'error', kind: 'artwork', chain: c, msg: friendly(e), hash: txState.hash }; }
   busy = false; render();
 }
-// Remember a collection deployed elsewhere (abx CLI, another browser) after checking it on-chain.
+// Remember a contract deployed elsewhere (abx CLI, another browser) after checking it on-chain.
 async function addExisting(){
   const addr = form.existing.trim();
-  if (!isAddress(addr)) { setStatus('Paste the collection contract address (0x…, 40 hex characters).', 'err'); return; }
+  if (!isAddress(addr)) { setStatus('Paste the contract address (0x…, 40 hex characters).', 'err'); return; }
   busy = true; render();
   try {
     await requireCode(addr, 'No contract at that address on ' + wanted().name + '.');
-    const [owner, name, symbol, max] = await Promise.all([call(addr, view('owner')).then(decodeAddress), call(addr, view('name')).then(decodeString), call(addr, view('symbol')).then(decodeString), call(addr, view('maxInvocations')).then(decodeUint)]);
-    const next = decodeUint(await call(addr, view('nextTokenId')));
-    if (owner.toLowerCase() !== account.toLowerCase()) throw new Error('That collection is owned by ' + short(owner) + ', not this wallet.');
+    const [owner, name, symbol, max, next] = await Promise.all([call(addr, view('owner')).then(decodeAddress), call(addr, view('name')).then(decodeString), call(addr, view('symbol')).then(decodeString), call(addr, view('maxInvocations')).then(decodeUint), call(addr, view('nextTokenId')).then(decodeUint)]);
+    if (owner.toLowerCase() !== account.toLowerCase()) throw new Error('That contract is owned by ' + short(owner) + ', not this wallet.');
     const coll = { chain: CP().chain(), address: checksum(addr), name, symbol, size: Number(max), minted: Number(next) };
     remember(coll); pick = coll.address; form.existing = ''; txState = null;
-  } catch (e){ txState = { stage: 'error', msg: friendly(e) }; }
+  } catch (e){ txState = { stage: 'error', kind: 'add', chain: wanted(), msg: friendly(e) }; }
   busy = false; render();
 }
 function friendly(e){
   const m = (e && (e.message || e.data?.message)) || String(e);
   if (/user rejected|denied|4001/i.test(m)) return 'You cancelled in the wallet.';
   if (/insufficient funds/i.test(m)) return 'Not enough ' + wanted().sym + ' in this wallet for gas.';
-  if (/SaltSenderMismatch/i.test(m)) return 'Salt/sender mismatch: reconnect the wallet and preview again.';
+  if (/SaltSenderMismatch/i.test(m)) return 'Salt/sender mismatch: reconnect the wallet and try again.';
   if (/Unauthorized/i.test(m)) return 'The contract refused: this wallet is not its owner.';
-  if (/MaxInvocationsReached|SoldOut|WithinMax/i.test(m)) return 'The collection is full.';
   return m.length > 240 ? m.slice(0, 240) + '…' : m;
 }
-const fmtEth = wei => wei == null ? '?' : (Number(wei) / 1e18).toLocaleString(undefined, { maximumSignificantDigits: 3 }) + ' ' + wanted().sym;
 const short = a => a ? a.slice(0, 6) + '…' + a.slice(-4) : '';
 
 // ───────────────────────── UI ─────────────────────────
 let root = null, statusEl = null;
 function setStatus(msg, kind){ if (statusEl){ statusEl.textContent = msg; statusEl.dataset.kind = kind || ''; } }
-function el(tag, attrs = {}, ...kids){ const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)){ if (k === 'onclick') n.onclick = v; else if (k === 'oninput') n.oninput = v; else if (k === 'html') n.innerHTML = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; }
+function el(tag, attrs = {}, ...kids){ const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)){ if (k === 'onclick') n.onclick = v; else if (k === 'oninput') n.oninput = v; else if (k === 'onchange') n.onchange = v; else if (k === 'html') n.innerHTML = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; }
 const link = (href, text) => el('a', { href, target: '_blank', rel: 'noopener' }, text);
-function setMode(m){ mode = m; txState = null; try { localStorage.setItem(LS_MODE, m); } catch {} render(); }
 // Mainnet / Sepolia tabs drive the app's own Network select (#abxChain) so both stay in step.
 let lastMain = 'ethereum';
 function setNet(test){
   const key = CP().chain(); if (!CHAINS[key].testnet) lastMain = key;
   const target = test ? (/base/.test(key) ? 'base-sepolia' : 'sepolia') : (key === 'base-sepolia' ? 'base' : lastMain);
-  const sel = document.getElementById('abxChain'); if (sel && sel.value !== target){ sel.value = target; sel.dispatchEvent(new Event('change', { bubbles: true })); }
-  txState = null; render();
+  const sel = $('abxChain'); if (sel && sel.value !== target){ sel.value = target; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+  txState = null; if (!selected()) pick = (collsHere()[0] || {}).address || ''; render();
 }
-function input(key, attrs){ return el('input', { type: 'text', value: form[key], oninput: e => { form[key] = e.target.value; if (txState && txState.stage === 'ready'){ txState = null; render(); } }, ...attrs }); }
-function collectionChooser(s){
-  const colls = collsHere();
-  const sel = el('select', { id: 'collPick' });
-  colls.forEach(c => sel.append(el('option', { value: c.address, ...(pick === c.address ? { selected: '' } : {}) }, c.name + ' (' + c.symbol + ') · ' + (c.minted || 0) + '/' + c.size + ' · ' + short(c.address))));
-  sel.append(el('option', { value: 'new', ...(pick === 'new' ? { selected: '' } : {}) }, '+ New collection…'));
-  sel.append(el('option', { value: 'existing', ...(pick === 'existing' ? { selected: '' } : {}) }, 'Add a collection I already deployed…'));
-  sel.onchange = () => { pick = sel.value; txState = null; render(); };
-  s.append(el('div', { class: 'row' }, el('label', {}, 'Collection ', sel)));
-  if (pick === 'new'){
-    s.append(el('div', { class: 'row' },
-      el('label', {}, 'Collection name ', input('collName', { id: 'collName', maxlength: '80', placeholder: 'e.g. Wobble Studies' })),
-      el('label', {}, 'Size ', input('size', { id: 'collSize', inputmode: 'numeric', size: '6', title: 'How many pieces this collection can ever hold. It can be lowered later with the abx tool, never raised.' })),
-    ));
-    s.append(el('div', { class: 'row' }, el('label', {}, 'About (optional) ', input('about', { id: 'collAbout', maxlength: '400', placeholder: 'Collection description, shown by marketplaces' }))));
-    s.append(el('div', { class: 'hint' }, 'One transaction deploys the collection contract with this drawing as piece #0. Symbol comes from the Symbol box above. Size is the most pieces it can hold; pick a number you will not outgrow.'));
-  } else if (pick === 'existing'){
-    s.append(el('div', { class: 'row' }, el('label', {}, 'Contract address ', input('existing', { id: 'collAddr', size: '44', placeholder: '0x…', spellcheck: 'false' })),
-      el('button', { class: 'small', onclick: addExisting, ...(account && !busy ? {} : { disabled: '' }) }, 'Check & add')));
-    s.append(el('div', { class: 'hint' }, 'A series contract made with ChainPainter or the abx tool on ' + wanted().name + '. The connected wallet must be its owner.'));
-  } else {
-    const c = selected();
-    if (c){
-      s.append(el('div', { class: 'hint' }, 'Adds this drawing as the next piece of ', el('b', {}, c.name), ' (', link(wanted().explorer + '/address/' + c.address, short(c.address) + ' ↗'), '). ',
-        el('a', { href: '#', onclick: e => { e.preventDefault(); forget(c); pick = 'new'; txState = null; render(); } }, 'forget')));
-    }
-  }
-}
+function input(key, attrs){ return el('input', { type: 'text', value: form[key], oninput: e => { form[key] = e.target.value; }, ...attrs }); }
 function render(){
   if (!root) return;
+  const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : null;
   root.innerHTML = '';
-  const c = wanted();
-  root.append(el('h3', {}, 'Mint from this page ', el('span', { class: 'dim' }, 'v2 test')));
-  root.append(el('div', { class: 'modes nets' },
-    el('button', { class: 'small' + (!c.testnet ? ' on' : ''), 'data-net': 'mainnet', onclick: () => setNet(false) }, 'Mainnet'),
-    el('button', { class: 'small' + (c.testnet ? ' on' : ''), 'data-net': 'sepolia', onclick: () => setNet(true) }, 'Sepolia test'),
-    el('span', { class: 'hint' }, c.testnet ? ' ' + c.name + ' · free test ETH, nothing real.' : ' ' + c.name + ' · real funds.')));
-  const tabs = el('div', { class: 'modes' },
-    el('button', { class: 'small' + (mode === 'single' ? ' on' : ''), 'data-mode': 'single', onclick: () => setMode('single') }, 'Single 1/1'),
-    el('button', { class: 'small' + (mode === 'collection' ? ' on' : ''), 'data-mode': 'collection', onclick: () => setMode('collection') }, 'Collection'),
-    el('span', { class: 'hint' }, mode === 'single' ? ' One contract, one token.' : ' One contract, many pieces. Mint each drawing into it.'));
-  root.append(tabs);
-  const steps = el('ol', { class: 'steps' }); root.append(steps);
-  // 1. wallet
-  const s1 = el('li'); steps.append(s1);
+  const c = wanted(), t = txState, colls = collsHere();
+  if (!selected() && pick !== 'existing') pick = (colls[0] || {}).address || '';
+  root.append(el('div', { class: 'head' }, el('h3', {}, 'Mint with ABX ', el('span', { class: 'dim' }, 'v2 test')),
+    el('div', { class: 'nets' },
+      el('button', { class: 'small' + (!c.testnet ? ' on' : ''), 'data-net': 'mainnet', onclick: () => setNet(false) }, 'Mainnet'),
+      el('button', { class: 'small' + (c.testnet ? ' on' : ''), 'data-net': 'sepolia', onclick: () => setNet(true) }, 'Sepolia test'))));
+  root.append(el('div', { class: 'hint' }, c.testnet ? c.name + ' · free test ETH, nothing real.' : c.name + ' · real funds. Gas is paid by your wallet.'));
+  // wallet
+  const w = el('div', { class: 'row wallet' }); root.append(w);
   if (!account){
-    s1.append('Connect a browser wallet. ');
-    if (providers.length > 1) providers.forEach(p => s1.append(el('button', { class: 'small', onclick: () => connect(p.provider) }, p.info.name)));
-    else s1.append(el('button', { class: 'primary', onclick: () => connect() }, 'Connect wallet'));
+    w.append(el('span', {}, 'Wallet '));
+    if (providers.length > 1) providers.forEach(p => w.append(el('button', { class: 'small', onclick: () => connect(p.provider) }, p.info.name)));
+    else w.append(el('button', { class: 'primary', onclick: () => connect() }, 'Connect wallet'));
   } else {
     const onRight = chainId === c.id;
-    s1.append('Wallet ', el('code', {}, short(account)), ' on ', el('b', {}, chainId === null ? 'unknown network' : (Object.values(CHAINS).find(x => x.id === chainId) || { name: 'chain ' + chainId }).name), '. ');
-    if (!onRight) s1.append(el('button', { class: 'primary', onclick: () => switchChain(CP().chain()) }, 'Switch to ' + c.name));
-    else s1.append(el('span', { class: 'ok' }, '✓ ' + c.name));
+    w.append('Wallet ', el('code', {}, short(account)), onRight ? el('span', { class: 'ok' }, ' ✓ ' + c.name) : el('button', { class: 'primary', onclick: () => switchChain(CP().chain()) }, 'Switch wallet to ' + c.name));
   }
-  // 2. preview
-  const s2 = el('li'); steps.append(s2);
-  const ready = account && chainId === c.id;
-  if (mode === 'single') s2.append('Preview the deploy: one transaction to the ABX factory. The SVG and description go on-chain as metadata fields; the canonical renderer answers tokenURI. ');
-  else collectionChooser(s2);
-  const canPreview = ready && !busy && (mode === 'single' || pick !== 'existing');
-  s2.append(el('button', { class: 'small', id: 'previewBtn', onclick: preview, ...(canPreview ? {} : { disabled: '' }) }, txState && txState.stage !== 'preview' ? 'Preview again' : 'Preview'));
-  const t = txState;
-  if (t && t.stage === 'preview') s2.append(el('div', { class: 'hint' }, 'Estimating…'));
-  if (t && (t.stage === 'ready' || t.stage === 'signing' || t.stage === 'pending' || t.stage === 'done')){
-    const net = t.chain.name + (t.chain.testnet ? ' (testnet)' : ' (real funds)');
-    const svgRow = ['SVG on-chain', (t.bytes / 1024).toFixed(1) + ' KB' + (t.bytes > 24 * 1024 ? ' · over 24 KB, costs more' : '')];
-    const gasRow = ['Gas estimate', t.gas.toString() + (t.feeWei != null ? ' ≈ ' + fmtEth(t.feeWei) : '')];
-    const rows = t.kind === 'single' ? [['Name', t.params.name], ['Symbol', t.params.symbol], ['Network', net], ['Owner · royalty 5%', short(account)], ['Contract will be', t.predicted], svgRow, gasRow]
-      : t.kind === 'series' ? [['Collection', t.params.name], ['Symbol', t.params.symbol], ['Size', t.size + ' pieces max'], ['Network', net], ['Owner · royalty 5%', short(account)], ['Contract will be', t.predicted], ['Piece #0', t.piece.name], svgRow, gasRow]
-      : [['Collection', t.coll.name + ' · ' + short(t.contract)], ['Piece #' + t.tokenId, t.piece.name], ['After this', (Number(t.tokenId) + 1) + ' of ' + t.max + ' minted'], ['Network', net], svgRow, gasRow];
-    const tbl = el('table', { class: 'kv' }); rows.forEach(([k, v]) => tbl.append(el('tr', {}, el('td', {}, k), el('td', {}, v)))); s2.append(tbl);
+  const ready = account && chainId === c.id && !busy;
+  // 1. contract
+  const s1 = el('div', { class: 'block' }); root.append(s1);
+  s1.append(el('div', { class: 'row' }, el('label', {}, 'Contract / collection name ', input('collName', { id: 'collName', maxlength: '80', placeholder: 'e.g. Wobble Studies' })),
+    el('button', { class: 'primary', id: 'createBtn', onclick: createContract, ...(ready ? {} : { disabled: '' }) }, 'Create contract')));
+  if (colls.length || pick === 'existing'){
+    const sel = el('select', { id: 'collPick', onchange: e => { pick = e.target.value; txState = null; render(); } });
+    colls.forEach(x => sel.append(el('option', { value: x.address, ...(pick === x.address ? { selected: '' } : {}) }, x.name + ' · ' + (x.minted || 0) + ' minted · ' + short(x.address))));
+    sel.append(el('option', { value: 'existing', ...(pick === 'existing' ? { selected: '' } : {}) }, 'Add a contract I deployed elsewhere…'));
+    s1.append(el('div', { class: 'row' }, el('label', {}, 'Contract ', sel)));
+  } else s1.append(el('div', { class: 'hint' }, 'No contracts on ' + c.name + ' yet. Create one above, or ', el('a', { href: '#', onclick: e => { e.preventDefault(); pick = 'existing'; render(); } }, 'add one you already deployed'), '.'));
+  if (pick === 'existing'){
+    s1.append(el('div', { class: 'row' }, el('label', {}, 'Address ', input('existing', { id: 'collAddr', size: '44', placeholder: '0x…', spellcheck: 'false' })),
+      el('button', { class: 'small', onclick: addExisting, ...(account && !busy ? {} : { disabled: '' }) }, 'Check & add')));
   }
-  // 3. mint
-  const s3 = el('li'); steps.append(s3);
-  const verb = t && t.kind === 'series' ? 'Create collection & mint #0' : t && t.kind === 'piece' ? 'Mint #' + t.tokenId + ' into ' + t.coll.name : 'Mint';
-  if (!t || t.stage === 'preview' || t.stage === 'error' && !t.params) s3.append('Mint. The wallet shows the exact gas; confirm there.');
-  else if (t.stage === 'ready') s3.append(el('button', { class: 'primary', id: 'mintBtn', onclick: mint }, verb + ' on ' + t.chain.name), el('span', { class: 'hint' }, t.chain.testnet ? ' Free test ETH only.' : ' Real funds. Check the fee in your wallet before confirming.'));
-  else if (t.stage === 'signing') s3.append('Confirm in your wallet…');
-  else if (t.stage === 'pending') s3.append('Sent. Waiting for confirmation… ', link(t.chain.explorer + '/tx/' + t.hash, 'view transaction ↗'));
-  else if (t.stage === 'done'){
-    const id = t.tokenId.toString();
-    s3.append(el('b', { class: 'ok' }, t.live ? '✓ Minted. ' : '✓ Confirmed. '), t.kind === 'piece' ? 'Piece #' + id + ' of ' + t.coll.name + ' · ' : t.kind === 'series' ? 'Collection created · piece #0 · ' : 'Token #0 · ',
-      'Contract ', link(t.chain.explorer + '/address/' + t.contract, short(t.contract) + ' ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'));
-    if (t.chain.opensea) s3.append(' · ', link('https://opensea.io/assets/' + t.chain.opensea + '/' + t.contract.toLowerCase() + '/' + id, 'OpenSea ↗'));
-    s3.append(el('div', { class: 'hint' }, (t.kind === 'single' ? '' : 'Draw the next piece, then Preview again to add it. ') + 'Metadata and image are served from the chain. Marketplaces may take a few minutes to index. Verify any time with: abx verify ' + t.contract));
+  // 2. artwork
+  const s2 = el('div', { class: 'block' }); root.append(s2);
+  const nameEl = el('input', { type: 'text', id: 'artName', maxlength: '80', placeholder: 'untitled', value: ($('tokName') || {}).value || '', oninput: e => { const tn = $('tokName'); if (tn){ tn.value = e.target.value; tn.dispatchEvent(new Event('input', { bubbles: true })); } } });
+  s2.append(el('div', { class: 'row' }, el('label', {}, 'Artwork name ', nameEl),
+    el('button', { class: 'primary', id: 'mintBtn', onclick: mintArtwork, ...(ready && selected() ? {} : { disabled: '' }) }, 'Mint artwork')));
+  if (selected()) s2.append(el('div', { class: 'hint' }, 'Mints this drawing as the next piece of ', el('b', {}, selected().name), '. The description above goes with it. One transaction; the wallet shows the exact gas.'));
+  // progress / result
+  const r = el('div', { class: 'result' }); root.append(r);
+  if (t && t.stage === 'signing') r.append(el('div', { class: 'hint' }, 'Estimating gas, then confirm in your wallet…'));
+  else if (t && t.stage === 'pending') r.append(el('div', { class: 'hint' }, 'Sent. Waiting for confirmation… ', link(t.chain.explorer + '/tx/' + t.hash, 'view transaction ↗')));
+  else if (t && t.stage === 'done'){
+    if (t.kind === 'contract') r.append(el('b', { class: 'ok' }, '✓ Contract created. '), el('b', {}, t.coll.name), ' at ', link(t.chain.explorer + '/address/' + t.contract, short(t.contract) + ' ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'), el('div', { class: 'hint' }, 'It is selected below. Now name the artwork and mint it.'));
+    else {
+      const id = t.tokenId.toString();
+      r.append(el('b', { class: 'ok' }, '✓ Minted. '), el('b', {}, t.piece.name), ' is #' + id + ' of ' + t.coll.name + ' · ', link(t.chain.explorer + '/address/' + t.contract, 'contract ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'));
+      if (t.chain.opensea) r.append(' · ', link('https://opensea.io/assets/' + t.chain.opensea + '/' + t.contract.toLowerCase() + '/' + id, 'OpenSea ↗'));
+      r.append(el('div', { class: 'hint' }, (t.bytes / 1024).toFixed(1) + ' KB of SVG stored on-chain. Marketplaces may take a few minutes to index. Draw the next one and mint again.'));
+    }
   }
-  if (t && t.stage === 'error') s3.append(el('div', { class: 'err' }, t.msg), t.hash ? link(c.explorer + '/tx/' + t.hash, ' transaction ↗') : '');
+  else if (t && t.stage === 'error') r.append(el('div', { class: 'err' }, t.msg), t.hash ? link(c.explorer + '/tx/' + t.hash, ' transaction ↗') : '');
   statusEl = el('div', { class: 'status-line' }); root.append(statusEl);
-  root.append(el('p', { class: 'hint' }, 'Same contracts and defaults as the abx command-line tool (1/1 factory ', el('code', {}, short(FACTORY)), ', series factory ', el('code', {}, short(SERIES_FACTORY)), ', renderer ', el('code', {}, short(RENDERER)), '). Collections are remembered in this browser only. ABX is prerelease; rehearse on Sepolia first.'));
+  root.append(el('p', { class: 'hint foot' }, 'Each contract is an ABX Series (one contract, many artworks; up to ' + DEFAULT_SIZE.toLocaleString() + '). Image, name and description are stored on-chain; 5% royalty to you. Contracts you create are remembered in this browser, per network. ABX is prerelease; rehearse on Sepolia first.'));
+  if (focused && $(focused)){ const f = $(focused); f.focus(); try { f.setSelectionRange(f.value.length, f.value.length); } catch {} }
 }
 function mount(){
-  const panel = document.getElementById('panel-abx'); if (!panel || root) return;
+  const host = document.querySelector('.export.mint'); if (!host || root) return;
   root = el('div', { class: 'mintbox', id: 'mintbox' });
-  panel.insertBefore(root, panel.firstChild); // top of the ABX panel: the in-page mint is the point of v2; the CLI steps follow
+  const plats = host.querySelector('.plats'); host.insertBefore(root, plats || null);
+  const abx = host.querySelector('[data-plat=abx]'); if (abx && abx.getAttribute('aria-pressed') !== 'true') abx.click(); // ABX byte budget (raw SVG vs 24 KB)
   const css = document.createElement('style');
-  css.textContent = '.mintbox{margin:6px 0 12px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox h3{font-size:14px;color:#fff;margin:0 0 6px}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox table.kv{font-size:12px;margin:6px 0;border-collapse:collapse}.mintbox table.kv td{padding:2px 8px 2px 0;color:#e8f4f3;vertical-align:top;word-break:break-all}.mintbox table.kv td:first-child{color:#cfe9e8;white-space:nowrap}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .modes{margin:0 0 8px}.mintbox .modes.nets{margin-bottom:4px}.mintbox .modes button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:4px 0}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 auto;min-width:0;max-width:100%}.mintbox .row input,.mintbox .row select{font-size:13px;padding:3px 6px;min-width:0;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .row input#collName,.mintbox .row input#collAbout{flex:1;min-width:160px}.mintbox .row input#collSize{width:5em}.mintbox a{color:#bfe9ff}';
+  css.textContent = '.export.mint .plats,.export.mint .panel{display:none!important}.mintbox{margin:6px 0 4px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px}.mintbox h3{font-size:14px;color:#fff;margin:0}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .nets button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .block{margin:10px 0;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:4px 0}.mintbox .row.wallet{margin-top:8px;font-size:13px;color:#e8f4f3}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 220px;min-width:0;max-width:100%}.mintbox .row input,.mintbox .row select{font-size:13px;padding:4px 6px;min-width:0;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .result{margin:6px 0;font-size:13px;color:#e8f4f3}.mintbox a{color:#bfe9ff}.mintbox .hint{font-size:12px;opacity:.9}.mintbox .foot{margin:8px 0 4px}';
   document.head.appendChild(css);
   render();
-  CP().onChange(() => { if (txState && txState.stage === 'ready'){ txState = null; render(); } });
-  const sel = document.getElementById('abxChain'); if (sel) sel.addEventListener('change', () => { if (!CHAINS[sel.value].testnet) lastMain = sel.value; txState = null; render(); });
+  const tn = $('tokName'); if (tn) tn.addEventListener('input', () => { const a = $('artName'); if (a && a.value !== tn.value) a.value = tn.value; });
+  const sel = $('abxChain'); if (sel) sel.addEventListener('change', () => { if (!CHAINS[sel.value].testnet) lastMain = sel.value; txState = null; if (!selected()) pick = (collsHere()[0] || {}).address || ''; render(); });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 
