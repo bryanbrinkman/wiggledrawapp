@@ -75,12 +75,12 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0;position:relative;overflow:hidden}
 .zoomchip{position:absolute;top:12px;right:12px;z-index:4}
 .zoomchip[hidden],.intro[hidden]{display:none}
-.intro{font-size:13px;color:var(--ink);margin-top:0;margin-bottom:6px;position:relative;padding-right:46px}
+.bar.intro{font-size:13px;color:var(--ink);margin-top:0;margin-bottom:6px;position:relative;padding-right:46px}
 #introX{position:absolute;top:6px;right:6px}
 .intro .step i{font-style:normal;font-weight:700;display:inline-block;min-width:1.5em;text-align:center;margin-right:2px;background:var(--accent);color:#fff}
 .sec.flash .sec-t{color:#fff;text-shadow:0 0 8px #fff}
 /* Phones: the page scrolls, and the tools (with Undo/Redo) stay pinned to the top. main must be as tall as its content for sticky to hold. */
-@media (max-width:719px){ main{flex:1 0 auto} .side > .tools{position:sticky;top:0;z-index:5;margin:0} }
+@media (max-width:719px){ .intro .long{display:none} main{flex:1 0 auto} .side > .tools{position:sticky;top:0;z-index:5;margin:0} }
 .viewbar{display:none}
 .fs{font-size:18px;padding:4px 10px;line-height:1}
 .fs[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
@@ -216,9 +216,9 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 <section class="work">
 <div class="bar intro" id="intro" hidden>
   <b>New here?</b>
-  <span class="step"><i>1</i> Draw on the canvas</span>
-  <button class="small step" data-go="export" title="Open Export &amp; share"><i>2</i> Export or share it</button>
-  <button class="small step" data-go="mint" title="Open Mint onchain"><i>3</i> Mint it onchain</button>
+  <span class="step"><i>1</i> Draw<span class="long"> on the canvas</span></span>
+  <button class="small step" data-go="export" title="Open Export &amp; share"><i>2</i> Export<span class="long"> or share it</span></button>
+  <button class="small step" data-go="mint" title="Open Mint onchain"><i>3</i> Mint<span class="long"> it onchain</span></button>
   <button class="small" id="introX" title="Hide this tip" aria-label="Hide this tip">×</button>
 </div>
 <div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas><button class="small zoomchip" id="zoomReset" hidden title="Reset zoom (pinch, or Ctrl/⌘ + scroll, to zoom)">100% ×</button></div>
