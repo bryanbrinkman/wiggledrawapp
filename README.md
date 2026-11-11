@@ -19,7 +19,7 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - A one‑time **Draw → Export → Mint** strip for first‑time visitors
 - Download or copy the finished SVG
 - **Copy link** makes a shareable URL that plays the animation; the whole project is compressed into the link itself, so nothing is uploaded and anyone can hit **Remix** to open it in the editor
-- **Mint onchain** from the page with [ABX by Art Blocks](https://docs.abx.io/) and a browser wallet: create a contract, then mint each drawing into it, image and metadata stored fully on-chain, with a live 24 KB budget meter
+- **Mint onchain** from the page with [ABX by Art Blocks](https://docs.abx.io/) and a browser wallet: create a contract, then mint each drawing into it, image and metadata stored fully on-chain, with a live size meter that shows how many transactions the mint will take
 
 The whole app is a single file: [`index.html`](index.html). No build step, no dependencies (the mint module ships its own keccak‑256 and ABI encoder).
 
@@ -55,7 +55,7 @@ vercel --prod # production deployment
 
 ## Sharing
 
-**Copy link** packs the entire project (layers, strokes, wiggle settings) into the URL fragment using deflate + base64url. Opening the link shows a clean viewer with the animation, **Download SVG**, **Copy link** and **Remix in ChainPainter**, which loads the drawing into the editor. Because the data lives after the `#`, it never reaches the server; the link is also a complete backup of the piece. A drawing that fits the 24 KB onchain budget makes a link of roughly 3–8 KB.
+**Copy link** packs the entire project (layers, strokes, wiggle settings) into the URL fragment using deflate + base64url. Opening the link shows a clean viewer with the animation, **Download SVG**, **Copy link** and **Remix in ChainPainter**, which loads the drawing into the editor. Because the data lives after the `#`, it never reaches the server; the link is also a complete backup of the piece. A 24 KB drawing makes a link of roughly 3–8 KB.
 
 ## Minting onchain
 
@@ -64,20 +64,25 @@ The **Mint onchain** section mints straight from the page with ABX (Art Blocks) 
 1. **Contract name → Create contract.** One transaction to ABX's canonical `SeriesImageFactory.deployDeterministic(params, salt)` deploys an empty Series contract (one contract, many artworks, room for 10,000; the cap can be lowered later with the `abx` tool, never raised). Defaults match the CLI: 5 % royalty with a 10 % cap, not burnable, plain ERC‑721, owner = payee = royalty receiver = your wallet; the symbol is derived from the name. Contracts you create are remembered in the browser per network and appear in a **Contract** dropdown; **Add a contract I deployed elsewhere** checks an address on‑chain (owner, name, symbol, size, minted count) and remembers it too.
 2. **Artwork name → Mint artwork.** A review appears first with a thumbnail, what will be stored, the network and an estimated fee (`eth_estimateGas` × `eth_gasPrice`); nothing is sent until **Confirm**. Changing the drawing or its details clears a pending review. Create contract has the same review step. Then one `multicall([setTokenField(id, image), setTokenField(id, name), …, mint(you)])` on the selected contract stores the SVG and metadata inline on‑chain and mints the next id to you, atomically. Only the contract owner can mint. The page reads the id back from the `Transfer` log and links the explorer and OpenSea. The artwork name is the project Title. **More options** holds the description, traits (stored as an OpenSea‑style `attributes` JSON array; plain numbers become numeric values) and an external link, each written as its own on‑chain field (`description`, `attributes`, `external_url`). Traits and link are remembered for the next mint.
 
-**Small and large drawings.** Storing bytes directly in the contract costs roughly 700 gas per byte, and a single transaction may use at most 16,777,216 gas, so a large SVG cannot be stored inline in one transaction. The mint therefore picks a path by size:
+**Size tiers.** Storing bytes directly in the contract costs roughly 700 gas per byte, and a single transaction may use at most 16,777,216 gas, so a large SVG cannot be stored inline in one transaction. The mint picks a path by the SVG's size, and the meter under the canvas shows the same three tiers:
 
-- Up to 4 KB: one transaction. The SVG goes inline in the mint, as described above.
-- Larger: two transactions. First `AbxChunkStore.writeContent(bytes[], bool[])` stores the SVG as SSTORE2 data contracts (about 240 gas per byte, roughly a third of the inline cost) and emits a manifest address. The page reads the bytes back with `read(manifest)` and compares them to the drawing before going on. Then the mint `multicall` sets the image field with the `reader` representation, `abi.encode(chunkStore, manifest)`, and mints. The renderer reads the image through the chunk store, so `tokenURI` is still fully on-chain. A stored image is remembered by content hash, so if the mint is cancelled the retry skips the store step.
+| Meter | SVG size | Transactions to mint | How |
+|---|---|---|---|
+| green | up to 4 KB | 1 | the SVG goes inline in the mint |
+| yellow | 4 to 48 KB | 2 | `AbxChunkStore.writeContent(bytes[], bool[])` stores the SVG as SSTORE2 data contracts (about 240 gas per byte, roughly a third of the inline cost), then the mint sets the image field with the `reader` representation, `abi.encode(chunkStore, manifest)` |
+| red | 48 to 96 KB | 4 or 5 | the chunks are written in batches of two with `multicall([writeChunk…])`, one `writeManifest((address,bool)[])` links them, then the mint |
 
-The review shows how many transactions to expect, the combined fee estimate and the wallet's balance. Gas limits are the estimate plus a quarter, capped at the per-transaction ceiling.
+Drawing stops at 96 KB; past that some providers can no longer read the token back in one call. In the red tier the meter and a notification show the transaction count and an estimated price at the current gas price (from the connected wallet, or a public endpoint when no wallet is connected). **Fit to 48 KB** re‑simplifies strokes until the piece is back in the yellow tier.
+
+After storing, the page reads the image back through the chunk store and compares it to the drawing before minting, so `tokenURI` is still fully on-chain and exact. Stored images and stored chunks are remembered by content hash: if a step is cancelled or fails, pressing Mint artwork again carries on from what is already on-chain. The review lists the transactions to expect, the combined fee estimate and the wallet's balance. Gas limits are the estimate plus a quarter, capped at the per-transaction ceiling.
 
 **Wallet and gallery.** A connected wallet is remembered (only the fact and the wallet's id, in localStorage) and reconnects silently on the next visit with `eth_accounts`, which never prompts; **disconnect** forgets it. Under the Contract dropdown the page shows what is already in the selected contract, newest first, read from the chain with `tokenURI` (up to 12, each linking to the explorer).
 
-ABX counts the raw SVG against 24 KB; the meter under the canvas shows it, and drawing is blocked (the canvas flashes red) at the limit. The canonical ABX metadata renderer answers `tokenURI`, so marketplaces read everything from the chain. ABX is prerelease: rehearse on Sepolia first. Not included: WalletConnect QR pairing (needs Reown's hosted SDK and a project id).
+The canonical ABX metadata renderer answers `tokenURI`, so marketplaces read everything from the chain. ABX is prerelease: rehearse on Sepolia first. Not included: WalletConnect QR pairing (needs Reown's hosted SDK and a project id).
 
 **Download PNG** in Export & share saves a 2048 px still of the first frame, and **Download GIF** saves a looping GIF of the wiggle at 2× (up to 1024 px) for posts and previews. Both are built in the browser.
 
-When over budget, **Fit to 24 KB** re‑simplifies strokes (and drops frames if it must) until the piece fits. Fit can be undone until you draw again.
+In the red tier, **Fit to 48 KB** re‑simplifies strokes (and drops frames if it must) until the piece is back under 48 KB. Fit can be undone until you draw again.
 
 ## How the export works
 

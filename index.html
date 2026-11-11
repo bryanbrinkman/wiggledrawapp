@@ -166,8 +166,11 @@ input[type=file]{display:none}
 .budget{font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;white-space:nowrap}
 .budget i{display:inline-block;width:110px;height:10px;border:2px solid var(--chrome-edge);background:var(--paper);position:relative}
 .budget i b{position:absolute;inset:0;width:var(--p,0%);background:#2fb36a}
-.budget[data-over="1"] i b{background:var(--accent)}
-.budget[data-over="1"]{color:var(--accent);font-weight:600}
+.budget i::after{content:'';position:absolute;top:0;bottom:0;left:8.33%;width:2px;background:var(--chrome-edge);opacity:.7}   /* the 4 KB mark on a 48 KB bar */
+.budget[data-tier="1"] i b{background:#e3b01e}
+.budget[data-tier="2"] i b{background:var(--accent)}
+.budget[data-tier="2"]{color:var(--accent);font-weight:600}
+.budget{white-space:normal;flex-wrap:wrap}
 .sec{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#d6d8dc;margin:4px 8px -2px}
 .sec .dim{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8}
 .side .sec{margin:8px 0 0}
@@ -251,10 +254,10 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="onion" aria-pressed="true" title="Show the previous and next frames faintly">Onion</button>
 </div>
 <div class="status" id="status" aria-live="polite">
-  <span class="budget" id="budget" title="Raw SVG size — ABX keeps onchain images under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
+  <span class="budget" id="budget" data-tier="0"><i><b></b></i><span id="budgetOut">0 KB</span></span>
   <span class="stat" id="stat">0 strokes</span>
   <span class="spacer"></span>
-  <button class="small" id="fit" title="Simplify strokes (then reduce frames) until the SVG is under 24 KB">Fit to 24 KB</button>
+  <button class="small" id="fit" title="Simplify strokes (then reduce frames) until the SVG is back under 48 KB">Fit to 48 KB</button>
 </div>
 
 <div class="bar viewbar" aria-label="Shared drawing">
@@ -634,8 +637,8 @@ function flashCanvas(){
   const step = () => { flashOn = k % 2 === 0; draw(); if (++k < 6) setTimeout(step, 110); };
   step();
 }
-const FULL_HINT = 'Undo a stroke, use Fit to 24 KB, or lower Frames';
-const FULL_MSG = 'Canvas is full — 24 KB reached. ' + FULL_HINT;
+const FULL_HINT = 'Undo a stroke, use Fit to 48 KB, or lower Frames';
+const FULL_MSG = 'Canvas is full — 96 KB reached. ' + FULL_HINT;
 function loop(t){
   if (S.playing && t - lastTick >= 1000 / S.fps){ lastTick = t; frame++; draw(); }
   requestAnimationFrame(loop);
@@ -768,7 +771,7 @@ function bucketAt(p){
   // Fills sit beneath this layer's strokes, above its earlier fills.
   const first = L.strokes.findIndex(s => !s.fill), at = first < 0 ? L.strokes.length : first;
   L.strokes.splice(at, 0, st);
-  if (budgetBytes() > LIMIT()){ L.strokes.splice(at, 1); flashCanvas(); toast('That fill would go over 24 KB. ' + FULL_HINT); return; }
+  if (budgetBytes() > LIMIT()){ L.strokes.splice(at, 1); flashCanvas(); toast('That fill would go over 96 KB. ' + FULL_HINT); return; }
   L.ops.push({ t: 'insert', idx: at }); L.redo = []; invalidate(); draw();
 }
 
@@ -866,7 +869,7 @@ cv.addEventListener('pointerup', e => {
   applyMove(pos(e));
   live.pts = live.pts.map(([x, y]) => [Math.round(x), Math.round(y)]);
   const L = layer(); L.strokes.push(live); live = null;
-  if (budgetBytes() > LIMIT()){ L.strokes.pop(); flashCanvas(); toast('That stroke would go over 24 KB. ' + FULL_HINT); return; }
+  if (budgetBytes() > LIMIT()){ L.strokes.pop(); flashCanvas(); toast('That stroke would go over 96 KB. ' + FULL_HINT); return; }
   L.ops.push({ t: 'stroke' }); L.redo = []; invalidate(); draw();
 });
 cv.addEventListener('pointercancel', () => {
@@ -1228,7 +1231,7 @@ $('addLayer').addEventListener('click', () => {
 $('toggleLayer').addEventListener('click', () => { layer().visible = !layer().visible; renderLayers(); invalidate(); draw(); });
 $('glitchLayer').addEventListener('click', () => {
   const L = layer(); L.glitch = !L.glitch;
-  if (L.glitch && budgetBytes() > LIMIT()){ L.glitch = false; flashCanvas(); toast('Glitch would go over 24 KB. ' + FULL_HINT); }
+  if (L.glitch && budgetBytes() > LIMIT()){ L.glitch = false; flashCanvas(); toast('Glitch would go over 96 KB. ' + FULL_HINT); }
   renderLayers(); invalidate(); draw();
 });
 $('layerUp').addEventListener('click', () => { const i = S.active; if (i < S.layers.length - 1){ [S.layers[i], S.layers[i + 1]] = [S.layers[i + 1], S.layers[i]]; S.active++; renderLayers(); invalidate(); draw(); } });
@@ -1384,26 +1387,57 @@ $('download').addEventListener('click', () => {
   saveFile((S.name || 'chainpainter') + '.svg', toSVG(), 'SVG saved');
 });
 
-// ---------- onchain export (Transient Labs) ----------
-// Spec: metadata follows the Transient Labs structure, every URI is a base64 data URI,
-// and the whole token URI must stay under 24 KB. https://docs.transientlabs.xyz/integrations/onchain-art
-const BUDGET = 24 * 1024;
+// ---------- on-chain size tiers ----------
+// The SVG's byte size decides how it is minted (see the mint module):
+//   green  up to 4 KB   one transaction, the SVG goes inline in the mint
+//   yellow up to 48 KB  two transactions: store the SVG in the ABX chunk store, then mint
+//   red    up to 96 KB  several store transactions, then mint; costs the most, so the price is shown
+// Drawing is blocked at 96 KB: past that, some providers can no longer read the token back.
+const TIER_SINGLE = 4096, BUDGET = 48 * 1024, HARD_LIMIT = 96 * 1024, CHUNK_BYTES = 22000;
 const utf8 = str => new TextEncoder().encode(str);
 function b64(str){ let bin = ''; utf8(str).forEach(b => bin += String.fromCharCode(b)); return btoa(bin); }
 function tokenName(){ return ($('tokName').value.trim() || S.name || 'untitled').slice(0, 80); }
 function fmtKB(n){ return (n / 1024).toFixed(1) + ' KB'; }
-// ABX stores the raw SVG on-chain and keeps images under 24 KB, so the budget is the SVG's byte size.
 const budgetBytes = svg => utf8(svg || toSVG()).length;
-const LIMIT = () => BUDGET;
-
-function updateBudget(svg){
-  const n = budgetBytes(svg);
-  const over = n > BUDGET, el = $('budget'); el.dataset.over = over ? '1' : '0'; $('status').dataset.over = el.dataset.over; cv.classList.toggle('over', n > LIMIT());
-  el.querySelector('b').style.setProperty('--p', Math.min(100, n / BUDGET * 100) + '%');
-  $('budgetOut').textContent = fmtKB(n) + ' / 24 KB · SVG' + (over ? ' · over' : '');
-  el.title = 'Raw SVG size — ABX keeps onchain images under 24 KB';
+const LIMIT = () => HARD_LIMIT;
+const tierOf = n => n <= TIER_SINGLE ? 0 : n <= BUDGET ? 1 : 2;
+// Transactions and a rough gas figure for minting n bytes (inline ≈ 720 gas/byte; chunk store ≈ 240 gas/byte plus fixed costs).
+function mintPlan(n){
+  if (n <= TIER_SINGLE) return { tx: 1, gas: 150000 + n * 720 };
+  const chunks = Math.ceil(n / CHUNK_BYTES);
+  if (n <= BUDGET) return { tx: 2, gas: 21000 + chunks * 40000 + n * 240 + 60000 + 330000 };
+  const batches = Math.ceil(chunks / 2);
+  return { tx: batches + 2, gas: batches * 21000 + chunks * 40000 + n * 240 + 120000 + 330000 };
 }
-function renderFitBtn(){ $('fit').textContent = fitBackup ? 'Undo fit' : 'Fit to 24 KB'; $('fit').style.display = fitBackup ? 'inline-block' : ''; }
+// Current gas price for the selected network, asked through the mint module (wallet if connected, else a public endpoint). Cached for a minute.
+let gasQuote = null;
+async function refreshGasQuote(){
+  const ask = window.ChainPainter && window.ChainPainter.gasPrice; if (!ask) return null;
+  if (gasQuote && gasQuote.chain === S.abxChain && Date.now() - gasQuote.at < 60000) return gasQuote;
+  try { const q = await ask(); if (q && q.wei != null){ gasQuote = { ...q, at: Date.now(), chain: S.abxChain }; return gasQuote; } } catch {}
+  return null;
+}
+const freshQuote = () => gasQuote && gasQuote.chain === S.abxChain && Date.now() - gasQuote.at < 300000 ? gasQuote : null;
+function priceText(gas, q){   // "≈ 0.012 ETH at 0.8 gwei" or, with no price available, the gas figure
+  if (!q) return 'about ' + (gas / 1e6).toFixed(1) + 'M gas';
+  const eth = Number(BigInt(Math.round(gas)) * q.wei) / 1e18, gwei = Number(q.wei) / 1e9;
+  return '≈ ' + eth.toLocaleString(undefined, { maximumSignificantDigits: 2 }) + ' ' + q.sym + (q.testnet ? ' (testnet, free)' : '') + ' at ' + gwei.toLocaleString(undefined, { maximumSignificantDigits: 2 }) + ' gwei';
+}
+let lastTier = 0, budgetSeq = 0;
+function updateBudget(svg){
+  const n = budgetBytes(svg), tier = tierOf(n), plan = mintPlan(n), el = $('budget'), seq = ++budgetSeq;
+  el.dataset.tier = String(tier); el.dataset.over = tier === 2 ? '1' : '0'; $('status').dataset.over = el.dataset.over; cv.classList.toggle('over', n > LIMIT());
+  el.querySelector('b').style.setProperty('--p', Math.min(100, n / BUDGET * 100) + '%');
+  const paint = () => { $('budgetOut').textContent = fmtKB(n) + (tier === 2 ? ' · over 48 KB · ' + plan.tx + ' txns to mint · ' + priceText(plan.gas, freshQuote()) : ' / 48 KB · ' + plan.tx + (plan.tx === 1 ? ' txn' : ' txns') + ' to mint'); };
+  paint();
+  el.title = ['Green: up to 4 KB mints in one transaction.', 'Yellow: 4 to 48 KB mints in two transactions (store the image, then mint).', 'Red: over 48 KB needs several store transactions and costs the most. Drawing stops at 96 KB.'][tier];
+  const entered = tier === 2 && lastTier !== 2; lastTier = tier;
+  if (tier === 2) refreshGasQuote().then(q => {
+    if (seq === budgetSeq) paint();
+    if (entered) toast('Over 48 KB: minting this takes ' + plan.tx + ' transactions, ' + priceText(plan.gas, q) + (q ? '' : '. Connect a wallet to see the price') + '. Fit to 48 KB brings it back to two.');
+  });
+}
+function renderFitBtn(){ $('fit').textContent = fitBackup ? 'Undo fit' : 'Fit to 48 KB'; $('fit').style.display = fitBackup ? 'inline-block' : ''; }
 function snapshot(){ return JSON.stringify({ frames: S.frames, layers: S.layers.map(L => L.strokes) }); }
 function restoreSnapshot(json){
   const o = JSON.parse(json); S.frames = o.frames; S.layers.forEach((L, i) => { L.strokes = o.layers[i] || L.strokes; });
@@ -1413,8 +1447,8 @@ function restoreSnapshot(json){
 async function fitToBudget(){
   if (fitBackup){ fitting = true; restoreSnapshot(fitBackup); fitBackup = null; fitting = false; invalidate(); draw(); toast('Fit undone'); return; }
   const before = budgetBytes();
-  if (before <= BUDGET){ toast('Already under 24 KB'); return; }
-  if (!(await ask('Simplify strokes until the token URI is under 24 KB? You can undo this until you draw again.'))) return;
+  if (before <= BUDGET){ toast('Already under 48 KB'); return; }
+  if (!(await ask('Simplify strokes until the SVG is under 48 KB? You can undo this until you draw again.'))) return;
   const backup = snapshot();
   const strokes = S.layers.flatMap(L => L.strokes.filter(st => !st.closed || st.fill));
   // Gentle simplification first, then one frame at a time, then heavier simplification as a last resort.
@@ -1640,6 +1674,9 @@ const changeHooks = [];
 window.ChainPainter = {
   svg: () => toSVG(), name: () => tokenName(), desc: () => abxDesc(), chain: () => S.abxChain,
   strokes: () => totalStrokes(), bytes: () => budgetBytes(), onChange: fn => { changeHooks.push(fn); },
+  limits: { inline: TIER_SINGLE, single: BUDGET, hard: HARD_LIMIT, chunk: CHUNK_BYTES },
+  gasPrice: null,   // set by the mint module: async () => ({ wei, sym, testnet }) or null
+  refreshBudget: () => updateBudget(),
 };
 // ---------- boot ----------
 (async () => {
@@ -1676,15 +1713,16 @@ const FACTORY = '0x2ff8828a9150401225bB217CAA8b9b5e666a1c97';   // OneOfOneImage
 const SERIES_FACTORY = '0x83222f791cA243FEb0c1Fef93a8732eCe3001b4b'; // SeriesImageFactory (collections)
 const CHUNK_STORE = '0x1Ca63a4ADEeF5e722ADA25b892BA40E3b2bcB905';    // AbxChunkStore: ownerless SSTORE2 store + reader (same address on every chain)
 const INLINE_MAX = 4096;        // bytes. A larger SVG is staged in the chunk store first (about a third of the gas), then minted with a `reader` field
+const SINGLE_STORE_MAX = 48 * 1024;   // up to here the whole image fits one store transaction; beyond it is written in batches of two chunks
 const CHUNK_SIZE = 22000;       // one SSTORE2 data contract holds under 24576 bytes; same chunk size as the ABX SDK
 const TX_GAS_CAP = 16777216n;   // per-transaction gas ceiling (2^24). Inline storage costs roughly 700 gas per byte, so a big SVG cannot go in one transaction
 const RENDERER = '0xBfa4181cd005b2CA64f8F124456c9fb6111a3A27';  // AbxMetadataRenderer (spec v12)
 const ZERO = '0x0000000000000000000000000000000000000000';
 const CHAINS = {
-  ethereum:      { id: 1,        name: 'Ethereum',     explorer: 'https://etherscan.io',          rpc: ['https://eth.llamarpc.com', 'https://cloudflare-eth.com'], sym: 'ETH', opensea: 'ethereum' },
+  ethereum:      { id: 1,        name: 'Ethereum',     explorer: 'https://etherscan.io',          rpc: ['https://ethereum-rpc.publicnode.com', 'https://eth.llamarpc.com'], sym: 'ETH', opensea: 'ethereum' },
   base:          { id: 8453,     name: 'Base',         explorer: 'https://basescan.org',          rpc: ['https://mainnet.base.org'],  sym: 'ETH', opensea: 'base' },
   arbitrum:      { id: 42161,    name: 'Arbitrum One', explorer: 'https://arbiscan.io',           rpc: ['https://arb1.arbitrum.io/rpc'], sym: 'ETH', opensea: 'arbitrum' },
-  sepolia:       { id: 11155111, name: 'Sepolia',      explorer: 'https://sepolia.etherscan.io',  rpc: ['https://rpc.sepolia.org'],   sym: 'ETH', testnet: true },
+  sepolia:       { id: 11155111, name: 'Sepolia',      explorer: 'https://sepolia.etherscan.io',  rpc: ['https://ethereum-sepolia-rpc.publicnode.com', 'https://rpc.sepolia.org'],   sym: 'ETH', testnet: true },
   'base-sepolia':{ id: 84532,    name: 'Base Sepolia', explorer: 'https://sepolia.basescan.org',  rpc: ['https://sepolia.base.org'],  sym: 'ETH', testnet: true },
 };
 const ROYALTY_BPS = 500, MAX_ROYALTY_BPS = 1000; // ABX CLI defaults: 5% royalty, 10% cap
@@ -1823,6 +1861,13 @@ function encodeWriteContent(bytes){
   const chunks = []; for (let i = 0; i < bytes.length; i += CHUNK_SIZE) chunks.push('0x' + hexOf(bytes.subarray(i, i + CHUNK_SIZE)));
   return encodeCall('writeContent', [{ type: 'bytes[]' }, { type: 'bool[]' }], [chunks, chunks.map(() => false)]);
 }
+const chunkList = bytes => { const out = []; for (let i = 0; i < bytes.length; i += CHUNK_SIZE) out.push(bytes.subarray(i, i + CHUNK_SIZE)); return out; };
+// Images too big for one store transaction: write the chunks in batches (the store is Multicallable), then one manifest that lists them.
+const encodeWriteChunks = parts => encodeCall('multicall', [{ type: 'bytes[]' }], [parts.map(part => encodeCall('writeChunk', [{ type: 'bytes' }], ['0x' + hexOf(part)]))]);
+const CHUNK_T = { type: 'tuple[]', components: [{ name: 'pointer', type: 'address' }, { name: 'compressed', type: 'bool' }] };
+const encodeWriteManifest = pointers => encodeCall('writeManifest', [CHUNK_T], [pointers.map(pointer => ({ pointer, compressed: false }))]);
+const CHUNK_TOPIC = keccakHex(utf8('ChunkWritten(address,uint256)'));
+const chunkPointersFrom = receipt => (receipt.logs || []).filter(x => x.address && x.address.toLowerCase() === CHUNK_STORE.toLowerCase() && x.topics && x.topics[0] === CHUNK_TOPIC && x.topics[1]).map(x => decodeAddress(x.topics[1]));
 const encodeRead = pointer => encodeCall('read', [{ type: 'address' }], [pointer]);
 const readerValue = manifest => '0x' + enc({ type: 'address' }, CHUNK_STORE) + enc({ type: 'address' }, manifest);
 const MANIFEST_TOPIC = keccakHex(utf8('ManifestWritten(address,uint256)'));
@@ -1863,7 +1908,7 @@ async function attach(p, accs){
   if (p.on && !hooked.has(p)){
     hooked.add(p);
     p.on('accountsChanged', a => { if (eth !== p) return; account = a[0] ? checksum(a[0]) : null; txState = null; gallery.key = ''; render(); });
-    p.on('chainChanged', async () => { if (eth !== p) return; await readChain(); txState = null; gallery.key = ''; render(); });
+    p.on('chainChanged', async () => { if (eth !== p) return; await readChain(); txState = null; gallery.key = ''; render(); refreshMeter(); });
   }
 }
 const rdnsOf = p => (providers.find(x => x.provider === p) || { info: {} }).info.rdns || '';
@@ -1874,7 +1919,7 @@ async function connect(p){
     const accs = await p.request({ method: 'eth_requestAccounts', params: [] });
     await attach(p, accs);
     try { localStorage.setItem(LS_WALLET, JSON.stringify({ rdns: rdnsOf(p) })); } catch {}
-    render();
+    render(); refreshMeter();
   } catch (e){ setStatus(friendly(e), 'err'); }
 }
 // Returning visitors: eth_accounts never opens a prompt, it only answers if this site is still approved in the wallet.
@@ -1887,7 +1932,7 @@ async function reconnect(){
   const p = match ? match.provider : (saved.rdns ? null : window.ethereum);   // a named wallet that has not announced itself yet: retried on announce
   if (!p) return;
   reconnecting = true;
-  try { const accs = await p.request({ method: 'eth_accounts', params: [] }); if (accs && accs[0]){ await attach(p, accs); render(); } } catch {}
+  try { const accs = await p.request({ method: 'eth_accounts', params: [] }); if (accs && accs[0]){ await attach(p, accs); render(); refreshMeter(); } } catch {}
   reconnecting = false;
 }
 function disconnect(){
@@ -1945,6 +1990,8 @@ function stagedGet(key){ try { return (JSON.parse(localStorage.getItem(LS_STAGED
 function stagedPut(key, manifest){
   try { const m = JSON.parse(localStorage.getItem(LS_STAGED) || '{}') || {}; m[key] = manifest; const ks = Object.keys(m); while (ks.length > 20) delete m[ks.shift()]; localStorage.setItem(LS_STAGED, JSON.stringify(m)); } catch {}
 }
+// An SSTORE2 data contract's code is a STOP byte followed by the data.
+async function chunkMatches(pointer, part){ try { const code = await rpc('eth_getCode', [pointer, 'latest']); return !!code && code.toLowerCase() === '0x00' + hexOf(part); } catch { return false; } }
 async function storedMatches(manifest, bytes){ try { return sameBytes(decodeBytes(await call(CHUNK_STORE, encodeRead(manifest))), bytes); } catch { return false; } }
 // Step 1 of either action: check everything and estimate the fee, then show a review. Nothing is sent yet.
 async function reviewContract(){
@@ -1978,29 +2025,39 @@ async function reviewArtwork(){
     // Small drawings go inline in one transaction. Larger ones are stored in the ABX chunk store first, then minted pointing at them.
     let chunked = false;
     if (raw.length > INLINE_MAX){ const code = await rpc('eth_getCode', [CHUNK_STORE, 'latest']).catch(() => '0x'); chunked = !!code && code !== '0x'; }
-    let plan;
+    const steps = []; let plan = { chunked };
     if (!chunked){
       const data = encodeMintPiece(next, piece, account);
-      plan = { data, ...(await estimate(coll.address, data)) };
+      steps.push({ kind: 'mint', data, ...(await estimate(coll.address, data)) });
     } else {
-      const key = stagedKey(c.id, raw); let manifest = stagedGet(key);
+      const key = stagedKey(c.id, raw); let manifest = stagedGet(key), parts = null, pointers = null;
       if (manifest && !(await storedMatches(manifest, raw))) manifest = null;
-      const storeData = encodeWriteContent(raw), store = manifest ? null : await estimate(CHUNK_STORE, storeData);
-      // The mint's gas does not depend on which address the reader field holds, so it can be estimated before the image is stored.
-      const mintEst = await estimate(coll.address, encodeMintPiece(next, { ...piece, imageReader: readerValue(manifest || CHUNK_STORE) }, account));
-      plan = { chunked: true, stagedKey: key, manifest, storeData, storeGas: store ? store.gas : 0n, mintGas: mintEst.gas, gas: (store ? store.gas : 0n) + mintEst.gas,
-        feeWei: mintEst.feeWei == null || (store && store.feeWei == null) ? null : mintEst.feeWei + (store ? store.feeWei : 0n) };
+      if (!manifest && raw.length <= SINGLE_STORE_MAX){
+        const data = encodeWriteContent(raw); steps.push({ kind: 'content', data, ...(await estimate(CHUNK_STORE, data)) });
+      } else if (!manifest){
+        parts = chunkList(raw); pointers = [];
+        for (const part of parts){ const ptr = stagedGet(stagedKey(c.id, part)); pointers.push(ptr && (await chunkMatches(ptr, part)) ? ptr : null); }   // parts stored by an earlier attempt
+        const todo = parts.map((_, i) => i).filter(i => !pointers[i]);
+        for (let i = 0; i < todo.length; i += 2){ const idxs = todo.slice(i, i + 2), data = encodeWriteChunks(idxs.map(j => parts[j])); steps.push({ kind: 'chunks', idxs, data, ...(await estimate(CHUNK_STORE, data)) }); }
+        steps.push({ kind: 'manifest', ...(await estimate(CHUNK_STORE, encodeWriteManifest(parts.map(() => CHUNK_STORE)))) });   // cost does not depend on the addresses listed
+      }
+      // Likewise the mint's gas does not depend on which address the reader field holds, so it can be estimated before the image is stored.
+      steps.push({ kind: 'mint', ...(await estimate(coll.address, encodeMintPiece(next, { ...piece, imageReader: readerValue(manifest || CHUNK_STORE) }, account))) });
+      plan = { chunked, stagedKey: key, manifest, parts, pointers, resumed: !!pointers && pointers.some(Boolean) };
     }
+    plan.steps = steps; plan.gas = steps.reduce((g, x) => g + x.gas, 0n); plan.feeWei = steps.some(x => x.feeWei == null) ? null : steps.reduce((g, x) => g + x.feeWei, 0n);
     let balance = null; try { balance = BigInt(await rpc('eth_getBalance', [account, 'latest'])); } catch {}
     txState = { stage: 'review', kind: 'artwork', chain: c, to: coll.address, coll, tokenId: next, piece, bytes: raw.length, raw, balance, ...plan };
   } catch (e){ txState = { stage: 'error', kind: 'artwork', chain: c, msg: friendly(e) }; }
   busy = false; render();
 }
-// Step 2: send exactly what was reviewed. A large image takes two transactions: store it, then mint.
+// Step 2: send exactly what was reviewed. An artwork is one or more transactions: store the image (if it is large), then mint.
+const STEP_NAME = { content: 'storing the image on-chain', chunks: 'storing part of the image on-chain', manifest: 'linking the stored parts', mint: 'minting' };
 async function confirmTx(){
   const t = txState; if (!t || t.stage !== 'review') return;
-  const twoStep = t.kind === 'artwork' && t.chunked && !t.manifest;
-  busy = true; txState = { ...t, stage: 'signing', label: twoStep ? 'Step 1 of 2: confirm storing the image in your wallet…' : 'Confirm in your wallet…' }; render();
+  const steps = t.kind === 'contract' ? null : t.steps, N = steps ? steps.length : 1, pre = i => N > 1 ? 'Step ' + (i + 1) + ' of ' + N + ': ' : '';
+  busy = true; txState = { ...t, stage: 'signing', label: steps ? pre(0) + 'confirm ' + STEP_NAME[steps[0].kind] + ' in your wallet…' : 'Confirm in your wallet…' }; render();
+  let stepsDone = 0;
   try {
     if (t.kind === 'contract'){
       const { hash, receipt } = await sendTx(t.to, t.data, t.gas, 'Creating the contract…');
@@ -2009,30 +2066,53 @@ async function confirmTx(){
       remember(t.coll); pick = t.predicted; form.collName = '';
       txState = { ...t, stage: 'done', hash, receipt, contract: t.predicted };
     } else {
-      let data = t.data, gas = t.gas, manifest = t.manifest;
-      if (t.chunked){
-        if (!manifest){
-          const r1 = await sendTx(CHUNK_STORE, t.storeData, t.storeGas, 'Step 1 of 2: storing the image on-chain…');
-          manifest = manifestFrom(r1.receipt);
-          if (!manifest) throw new Error('The image was stored, but its address could not be read from the receipt. Check the transaction.');
-          if (!(await storedMatches(manifest, t.raw))) throw new Error('The stored image does not match the drawing, so nothing was minted.');
-          stagedPut(t.stagedKey, manifest);
-          txState = { ...txState, manifest, stage: 'signing', label: 'Step 2 of 2: image stored. Confirm the mint in your wallet…' }; render();
+      let manifest = t.manifest; const pointers = t.pointers ? [...t.pointers] : null; let last = null;
+      const settle = async m => {   // a manifest exists: check what it serves is exactly the drawing, then remember it
+        if (!m) throw new Error('The image was stored, but its address could not be read from the receipt. Check the transaction.');
+        if (!(await storedMatches(m, t.raw))) throw new Error('The stored image does not match the drawing, so nothing was minted.');
+        stagedPut(t.stagedKey, m); return m;
+      };
+      for (let i = 0; i < N; i++){
+        const st = steps[i], cap = s0 => s0.charAt(0).toUpperCase() + s0.slice(1);
+        if (i > 0){ txState = { ...txState, stage: 'signing', label: pre(i) + 'confirm ' + STEP_NAME[st.kind] + ' in your wallet…' }; render(); }
+        const going = pre(i) + STEP_NAME[st.kind] + '…';
+        if (st.kind === 'content') manifest = await settle(manifestFrom((await sendTx(CHUNK_STORE, st.data, st.gas, going)).receipt));
+        else if (st.kind === 'chunks'){
+          const ptrs = chunkPointersFrom((await sendTx(CHUNK_STORE, st.data, st.gas, going)).receipt);
+          if (ptrs.length !== st.idxs.length) throw new Error('Expected ' + st.idxs.length + ' stored parts in the receipt, found ' + ptrs.length + '. Check the transaction.');
+          st.idxs.forEach((j, k) => { pointers[j] = ptrs[k]; stagedPut(stagedKey(t.chain.id, t.parts[j]), ptrs[k]); });
+        } else if (st.kind === 'manifest'){
+          const data = encodeWriteManifest(pointers);
+          manifest = await settle(manifestFrom((await sendTx(CHUNK_STORE, data, (await estimate(CHUNK_STORE, data)).gas, going)).receipt));
+        } else {
+          const data = t.chunked ? encodeMintPiece(t.tokenId, { ...t.piece, imageReader: readerValue(manifest) }, account) : st.data;
+          last = await sendTx(t.to, data, t.chunked ? (await estimate(t.to, data)).gas : st.gas, cap(going));
         }
-        data = encodeMintPiece(t.tokenId, { ...t.piece, imageReader: readerValue(manifest) }, account);
-        gas = (await estimate(t.to, data)).gas;
+        stepsDone = i + 1;
       }
-      const { hash, receipt } = await sendTx(t.to, data, gas, t.chunked ? 'Step 2 of 2: minting…' : 'Minting…');
-      const ids = mintedIds(receipt, t.coll.address); const tokenId = ids.length ? ids[0] : t.tokenId;
+      const ids = mintedIds(last.receipt, t.coll.address); const tokenId = ids.length ? ids[0] : t.tokenId;
       remember({ ...t.coll, minted: Number(tokenId) + 1 }); gallery.key = '';   // reload the gallery with the new piece
-      txState = { ...t, stage: 'done', hash, receipt, contract: t.coll.address, tokenId, manifest };
+      txState = { ...t, stage: 'done', hash: last.hash, receipt: last.receipt, contract: t.coll.address, tokenId, manifest };
     }
   } catch (e){
-    const stored = t.kind === 'artwork' && t.chunked && !t.manifest && !!txState.manifest;   // the image went on-chain but the mint did not
-    txState = { ...t, stage: 'error', msg: friendly(e) + (stored ? ' The image is already stored on-chain: press Mint artwork again to finish. You will not pay to store it twice.' : ''), hash: txState.hash };
+    txState = { ...t, stage: 'error', hash: txState.hash, msg: friendly(e) + (stepsDone > 0 ? ' What is already stored on-chain is kept: press Mint artwork again to carry on from there. You will not pay for it twice.' : '') };
   }
   busy = false; render();
 }
+// Current gas price for the selected network: the connected wallet's view if it is on that network, else a public endpoint.
+async function gasQuoteNow(){
+  const c = wanted(); let wei = null;
+  if (eth && account && chainId === c.id){ try { wei = BigInt(await rpc('eth_gasPrice')); } catch {} }
+  for (const url of wei == null ? c.rpc : []){
+    try {
+      const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 4000);
+      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_gasPrice', params: [] }), signal: ctl.signal });
+      clearTimeout(tm); const j = await res.json(); if (j && typeof j.result === 'string'){ wei = BigInt(j.result); break; }
+    } catch {}
+  }
+  return wei == null ? null : { wei, sym: c.sym, testnet: !!c.testnet };
+}
+const refreshMeter = () => { try { CP().refreshBudget && CP().refreshBudget(); } catch {} };
 // A review shows exactly what will be sent; any change to the drawing or its details makes it stale.
 function invalidateReview(){ if (txState && txState.stage === 'review'){ txState = null; renderResult(); } }
 
@@ -2142,7 +2222,10 @@ function renderResult(){
     const rows = t.kind === 'contract'
       ? [['Create contract', t.coll.name + ' (' + t.coll.symbol + ')'], ['Holds', 'up to ' + DEFAULT_SIZE.toLocaleString() + ' artworks · 5% royalty to you'], ['Address will be', short(t.predicted)]]
       : [['Mint', t.piece.name + ' as #' + t.tokenId + ' of ' + t.coll.name], ['Stored on-chain', [(t.bytes / 1024).toFixed(1) + ' KB SVG', 'name', ...extrasOf(t.piece)].join(' · ')]];
-    if (t.kind === 'artwork' && t.chunked) rows.push(['Transactions', t.manifest ? '1 · the image is already stored on-chain from an earlier try' : '2 · store the image, then mint. About a third of the gas of one big transaction']);
+    if (t.kind === 'artwork' && t.chunked){ const n = t.steps.length, parts = t.steps.filter(x => x.kind === 'chunks').length;
+      rows.push(['Transactions', n === 1 ? '1 · the image is already stored on-chain from an earlier try'
+        : parts ? n + ' · store the image in ' + parts + (parts === 1 ? ' batch' : ' batches') + ', link the parts, then mint' + (t.resumed ? '. Some parts are already stored' : '')
+        : n + ' · store the image, then mint. About a third of the gas of one big transaction']); }
     rows.push(['Network', t.chain.name + (t.chain.testnet ? ' · testnet, free' : ' · real funds')], ['Estimated fee', fmtEth(t.feeWei) + ' · gas ' + t.gas.toLocaleString()]);
     if (t.balance != null && t.feeWei != null){ const low = t.balance < t.feeWei;
       rows.push(['Wallet balance', (Number(t.balance) / 1e18).toLocaleString(undefined, { maximumSignificantDigits: 3 }) + ' ' + t.chain.sym + (low ? ' · may not cover the fee' : '')]); }
@@ -2153,7 +2236,7 @@ function renderResult(){
     if (t.stage === 'review') box.append(el('div', { class: 'row' },
       el('button', { class: 'primary', id: 'confirmBtn', onclick: confirmTx }, (t.kind === 'contract' ? 'Confirm & create' : 'Confirm & mint') + ' on ' + t.chain.name),
       el('button', { class: 'small', id: 'cancelBtn', onclick: () => { txState = null; renderResult(); } }, 'Cancel'),
-      el('span', { class: 'hint' }, t.kind === 'artwork' && t.chunked && !t.manifest ? 'Your wallet will ask twice and shows the final fee each time.' : 'Your wallet shows the final fee.')));
+      el('span', { class: 'hint' }, t.kind === 'artwork' && t.steps.length > 1 ? 'Your wallet will ask ' + t.steps.length + ' times and shows the final fee each time.' : 'Your wallet shows the final fee.')));
     else box.append(el('div', { class: 'hint', id: 'stepLabel' }, t.label || 'Confirm in your wallet…'));
   }
   else if (t.stage === 'pending') r.append(el('div', { class: 'hint', id: 'stepLabel' }, (t.label || 'Sent.') + ' Waiting for confirmation… ', link(t.chain.explorer + '/tx/' + t.hash, 'view transaction ↗')));
@@ -2245,16 +2328,17 @@ function mount(){
   css.textContent = '.mintbox{margin:6px 0 4px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px}.mintbox h3{font-size:14px;color:#fff;margin:0}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .nets button.on{background:#fff;color:#222427;font-weight:700}.mintbox .block{margin:10px 0;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:4px 0}.mintbox .row.wallet{margin-top:8px;font-size:13px;color:#eceef0}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#eceef0;flex:1 1 280px;min-width:0;max-width:100%;white-space:nowrap}.mintbox .row input,.mintbox .row select{font-size:13px;padding:4px 6px;min-width:140px;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .result{margin:6px 0;font-size:13px;color:#eceef0}.mintbox a{color:#bfe9ff}.mintbox .hint{font-size:12px;opacity:.9}.mintbox .foot{margin:8px 0 4px}.mintbox .dis{margin-left:auto;font-size:12px}.mintbox .review{margin:4px 0;padding:8px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.25)}.mintbox .rv{display:flex;gap:10px;align-items:flex-start}.mintbox .thumb{width:84px;height:84px;object-fit:contain;background:#fff;border:2px solid var(--chrome-edge);flex:none}.mintbox table.kv{font-size:12px;border-collapse:collapse;margin:0 0 6px}.mintbox table.kv td{padding:2px 8px 2px 0;color:#eceef0;vertical-align:top;overflow-wrap:anywhere}.mintbox table.kv td:first-child{color:#d6d8dc;white-space:nowrap}.mintbox .gallery{margin:6px 0 0}.mintbox .gallery .lbl{font-size:12px;color:#eceef0;margin:0 0 4px}.mintbox .strip{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.mintbox .piece{position:relative;display:block;width:56px;height:56px;background:#fff;border:2px solid var(--chrome-edge);text-decoration:none}.mintbox .piece img{width:100%;height:100%;object-fit:contain;display:block}.mintbox .piece .noimg{display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:#888}.mintbox .piece .cap{position:absolute;left:0;bottom:0;font:10px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.65);color:#fff;padding:0 3px}.mintbox .piece:hover,.mintbox .piece:focus-visible{border-color:var(--accent);outline:none}.mintbox .opts{margin:6px 0 2px;padding:8px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.15)}.mintbox .opts label.col{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#eceef0;margin:0 0 8px}.mintbox .opts textarea,.mintbox .opts input{display:block;font-family:inherit;font-size:13px;line-height:1.35;padding:4px 6px;width:100%;height:auto;box-sizing:border-box;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge)}.mintbox .opts textarea{resize:vertical;min-height:44px}.mintbox .opts .lbl{font-size:12px;color:#eceef0;margin:0 0 4px}.mintbox .trait{display:flex;gap:6px;align-items:center;margin:0 0 4px}.mintbox .trait .tk{flex:1 1 40%}.mintbox .trait .tv{flex:1 1 60%}.mintbox .trait .x{margin:0;padding:2px 8px}.mintbox .traits{margin:0 0 8px}';
   document.head.appendChild(css);
   render();
+  CP().gasPrice = gasQuoteNow;
   CP().onChange(() => { if (txState && txState.stage === 'review' && txState.kind === 'artwork') invalidateReview(); });   // the drawing or its name/description changed
   reconnect();
   const tn = $('tokName'); if (tn) tn.addEventListener('input', () => { const a = $('artName'); if (a && a.value !== tn.value) a.value = tn.value; });
   const td = $('tokDesc'); if (td) td.addEventListener('input', () => { const a = $('artDesc'); if (a && a.value !== td.value) a.value = td.value; });
-  const sel = $('abxChain'); if (sel) sel.addEventListener('change', () => { if (!CHAINS[sel.value].testnet) lastMain = sel.value; txState = null; if (!selected()) pick = (collsHere()[0] || {}).address || ''; render(); });
+  const sel = $('abxChain'); if (sel) sel.addEventListener('change', () => { if (!CHAINS[sel.value].testnet) lastMain = sel.value; txState = null; if (!selected()) pick = (collsHere()[0] || {}).address || ''; render(); refreshMeter(); });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 
 // Test hooks (pure functions only; nothing here touches a wallet).
-window.__abxMint = { friendly, encodeWriteContent, readerValue, decodeBytes, MANIFEST_TOPIC, CHUNK_STORE, INLINE_MAX, parseTokenURI, attributesJSON, keccakHex, utf8, encodeCall, encodeDeploy, encodeSeriesDeploy, encodePredict, encodeMintPiece, buildParams, buildSeriesParams, pieceFields, selector, PARAMS_T, SERIES_PARAMS_T, FACTORY, SERIES_FACTORY, RENDERER, checksum, tag, decodeString, mintedIds, TRANSFER_TOPIC };
+window.__abxMint = { encodeWriteChunks, encodeWriteManifest, CHUNK_TOPIC, SINGLE_STORE_MAX, friendly, encodeWriteContent, readerValue, decodeBytes, MANIFEST_TOPIC, CHUNK_STORE, INLINE_MAX, parseTokenURI, attributesJSON, keccakHex, utf8, encodeCall, encodeDeploy, encodeSeriesDeploy, encodePredict, encodeMintPiece, buildParams, buildSeriesParams, pieceFields, selector, PARAMS_T, SERIES_PARAMS_T, FACTORY, SERIES_FACTORY, RENDERER, checksum, tag, decodeString, mintedIds, TRANSFER_TOPIC };
 })();
 
 </script>
