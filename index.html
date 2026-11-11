@@ -68,8 +68,17 @@ button,.tool{
 button:active,.tool:active{transform:translateY(3px);box-shadow:none}
 button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
 .tool[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
+.icon{padding:3px 6px;min-height:28px}
+.icon svg{width:16px;height:16px;display:block;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.setups{display:flex;flex-direction:column;gap:6px;margin:10px 0 14px;max-height:60vh;overflow:auto;font-size:14px}
+.setups .srow{display:flex;gap:6px;align-items:stretch}
+.setups .setup{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:6px 8px}
+.setups .chips{display:flex;flex-wrap:wrap;gap:2px}
+.setups .chips i{display:block;width:14px;height:14px;border:1px solid var(--chrome-edge)}
+.setups .note{color:var(--muted);font-size:13px}
 .tool svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .spacer{flex:1}
+.tools .brk{flex-basis:100%;height:0;margin-bottom:-6px}
 main{flex:1;display:flex;flex-direction:column;min-height:0}
 .work,.side{display:contents}
 .side > *{order:3} .side > .tools,.side > .sec-tools{order:0} .stage{order:1} .side > .sec-color{order:1} .status{order:2} .viewbar{order:2}
@@ -189,8 +198,6 @@ body.view .frames{display:none !important}
 #allFrames[aria-pressed="true"],#onion[aria-pressed="true"],#animMode[aria-pressed="true"],#glitchLayer[aria-pressed="true"],#fplay[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
 .status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 8px 8px;padding:6px 8px;background:var(--chrome);border:2px solid var(--chrome-edge);box-shadow:var(--shadow);font-size:13px}
 .status .stat{color:var(--muted)}
-.titlebox{display:flex;align-items:center;gap:6px;flex:1 1 170px;min-width:0;max-width:280px;color:var(--ink)}
-.titlebox input{flex:1;min-width:0;font:inherit;font-size:14px;padding:3px 6px;border:2px solid var(--chrome-edge);background:var(--paper);color:#161616;-webkit-user-select:text;user-select:text}
 .status #fit{display:none}
 .status[data-over="1"] #fit{display:inline-block;background:var(--accent);color:#fff;border-color:#8a2812}
 .view .status{display:none}
@@ -219,7 +226,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 </style>
 </head>
 <body>
-<header><h1>ChainPainter</h1><span id="tagline">draws SVG that wobbles · exports on-chain ready</span><button class="tipbtn" id="tipBtn"><span class="long">enjoy this app? </span>tip <span class="mid">the artist </span>♥</button><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener"><span class="long">made </span>by Brinkman ↗</a><button class="secret" id="secret" aria-label="Toggle Brinkman pastels" tabindex="-1"></button></header>
+<header><h1>ChainPainter</h1><span id="tagline">Draw Animated SVGs - Mint On-Chain</span><button class="tipbtn" id="tipBtn"><span class="long">enjoy this app? </span>tip <span class="mid">the artist </span>♥</button><a class="by" href="https://bryanbrinkman.com" target="_blank" rel="noopener"><span class="long">made </span>by Brinkman ↗</a><button class="secret" id="secret" aria-label="Toggle Brinkman pastels" tabindex="-1"></button></header>
 
 <main>
 <section class="work">
@@ -244,7 +251,6 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="onion" aria-pressed="true" title="Show the previous and next frames faintly">Onion</button>
 </div>
 <div class="status" id="status" aria-live="polite">
-  <label class="titlebox" title="Name of this drawing: used for downloads, the share link and the minted artwork">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
   <span class="budget" id="budget" title="Raw SVG size — ABX keeps onchain images under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
   <span class="stat" id="stat">0 strokes</span>
   <span class="spacer"></span>
@@ -273,7 +279,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="tool" data-tool="eraser" aria-pressed="false" title="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M3 15l9-9 7 7-6 6H8z M8 19h12"/></svg></button>
   <button class="tool" data-tool="fill" aria-pressed="false" title="Fill (G): tap an enclosed area to fill it; tap a fill to recolour it"><svg viewBox="0 0 24 24"><path d="M5 12l7-7 7 7-7 7z M12 5V3 M19 12c0 0 2 2.5 2 4a2 2 0 0 1-4 0c0-1.5 2-4 2-4z M5 12h14"/></svg></button>
   <button class="tool" data-tool="move" aria-pressed="false" title="Move layer (V): drag, or arrow keys (Shift = 10 px)"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3m3-3l3 3M12 21l-3-3m3 3l3-3M3 12l3-3m-3 3l3 3M21 12l-3-3m3 3l-3 3"/></svg></button>
-  <span class="spacer"></span>
+  <span class="brk"></span>
   <button id="undo" title="Undo (Ctrl/⌘ Z)">Undo</button>
   <button id="redo" title="Redo (Shift Ctrl/⌘ Z)">Redo</button>
   <button id="help" class="fs" title="Keyboard shortcuts (?)">?</button>
@@ -283,6 +289,8 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 <h2 class="sec sec-color" data-sec="color"><button class="sec-t" aria-expanded="true">Color &amp; brush <span class="dim">palette · brush size</span></button></h2>
 <div class="bar sec-color">
   <div class="palette" id="palette"></div>
+  <button class="icon" id="palSave" title="Save this swatch setup (the colours you added with +)" aria-label="Save swatch setup"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6"/></svg></button>
+  <button class="icon" id="palLoad" title="Load a saved swatch setup" aria-label="Load swatch setup"><svg viewBox="0 0 24 24"><path d="M3 6h6l2 3h10v10H3z"/></svg></button>
   <input type="color" id="custom" value="#161616" title="Custom color">
   <span class="spacer"></span>
   <label class="sl" title="Brush size ( [ and ] )">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
@@ -323,8 +331,11 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   </select></label>
 </div>
 
-<h2 class="sec collapsed" data-sec="project"><button class="sec-t" aria-expanded="false">Project <span class="dim">new · open · save</span></button></h2>
+<h2 class="sec collapsed" data-sec="project"><button class="sec-t" aria-expanded="false">Project <span class="dim">title · new · open · save</span></button></h2>
 <div class="export">
+  <div class="row">
+    <label class="field" title="Name of this drawing: used for downloads, the share link and the minted artwork">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
+  </div>
   <div class="row">
     <button id="newProj" title="Start a blank drawing">New</button>
     <button id="openProj" title="Open a saved .chainpainter.json file">Open…</button>
@@ -333,7 +344,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   </div>
 </div>
 
-<h2 class="sec" data-sec="export"><button class="sec-t" aria-expanded="true">Export &amp; share <span class="dim">SVG · PNG · GIF · link</span></button></h2>
+<h2 class="sec collapsed" data-sec="export"><button class="sec-t" aria-expanded="false">Export &amp; share <span class="dim">SVG · PNG · GIF · link</span></button></h2>
 <div class="export">
   <div class="row">
     <button class="primary" id="download" title="Download the animated SVG">Download SVG</button>
@@ -390,7 +401,7 @@ const PALETTE = ['#161616','#ffffff','#7a7a7a','#c3c3c3','#ff2a2a','#ff8a00','#f
 // Brinkman pastels: hidden until you press B or tap the secret spot beside the credit link.
 const PASTELS = ['#ffc9a3','#e0708c','#60c2d8','#78d8a4','#e8bd4a','#f2efe2'];
 const $ = id => document.getElementById(id);
-const TAGLINE = 'draws SVG that wobbles · exports on-chain ready';
+const TAGLINE = 'Draw Animated SVGs - Mint On-Chain';
 let viewing = false; // true while showing a shared link (read-only)
 function newLayer(name){ return { name, visible: true, strokes: [], ops: [], redo: [] }; }
 // Undo history per layer: an op is either a stroke (always the last one in L.strokes) or a move of the whole layer.
@@ -1014,6 +1025,56 @@ function addSwatch(c){
   setColor(c);
 }
 renderPalette();
+// ---------- swatch setups: named sets of the colours added with +, kept in this browser ----------
+const LS_SETUPS = 'chainpainter:swatch-setups';
+function loadSetups(){
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_SETUPS) || '[]');
+    return (Array.isArray(v) ? v : []).filter(x => x && typeof x.name === 'string' && Array.isArray(x.colors))
+      .map(x => ({ name: x.name.slice(0, 40), colors: x.colors.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 64), pastels: !!x.pastels }));
+  } catch { return []; }
+}
+const storeSetups = list => { try { localStorage.setItem(LS_SETUPS, JSON.stringify(list.slice(0, 30))); } catch {} };
+function applySetup(x){
+  CUSTOM = [...x.colors]; saveCustom(); setPastels(!!x.pastels, true); renderPalette();
+  toast(x.name ? 'Loaded swatch setup "' + x.name + '"' : 'Back to the default swatches');
+}
+$('palSave').addEventListener('click', async () => {
+  const pastels = document.body.classList.contains('pastels');
+  if (!CUSTOM.length && !pastels){ toast('Add colours with + first, then save the setup'); return; }
+  const name = await askText('Name this swatch setup', 'My palette'); if (name === null) return;
+  const n = name.trim().slice(0, 40) || 'My palette';
+  storeSetups([{ name: n, colors: [...CUSTOM], pastels }, ...loadSetups().filter(x => x.name !== n)]);
+  toast('Saved swatch setup "' + n + '"');
+});
+$('palLoad').addEventListener('click', () => {
+  const v = $('veil'), msg = $('dlgMsg');
+  $('dlgIn').style.display = 'none'; $('dlgNo').style.display = 'none';
+  const done = () => { v.classList.remove('open'); $('dlgNo').style.display = ''; msg.innerHTML = ''; $('dlgOk').onclick = null; v.onclick = null; window.removeEventListener('keydown', esc, true); };
+  const esc = e => { if (e.key === 'Escape'){ e.stopPropagation(); done(); } };
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const row = (x, removable) => {
+    const r = mk('div', 'srow'), b = mk('button', 'setup'), chips = mk('span', 'chips');
+    b.append(mk('span', '', x.name || 'Default swatches'), chips);
+    (x.name ? x.colors : PALETTE).forEach(c => { const i = mk('i'); i.style.background = c; i.title = c; chips.append(i); });
+    b.addEventListener('click', () => { applySetup(x); done(); });
+    r.append(b);
+    if (removable){ const del = mk('button', 'small', '×'); del.title = 'Delete this setup'; del.setAttribute('aria-label', 'Delete ' + x.name);
+      del.addEventListener('click', () => { storeSetups(loadSetups().filter(y => y.name !== x.name)); render(); }); r.append(del); }
+    return r;
+  };
+  const render = () => {
+    msg.innerHTML = ''; msg.append(mk('strong', '', 'Swatch setups'));
+    const wrap = mk('div', 'setups'), list = loadSetups();
+    if (!list.length) wrap.append(mk('div', 'note', 'Nothing saved yet. Add colours with +, then press the save icon.'));
+    list.forEach(x => wrap.append(row(x, true)));
+    wrap.append(row({ name: '', colors: [], pastels: false }, false), mk('div', 'note', 'Loading a setup replaces the colours you added with +. Setups are kept in this browser.'));
+    msg.append(wrap);
+  };
+  render(); v.classList.add('open');
+  $('dlgOk').onclick = done; v.onclick = e => { if (e.target === v) done(); }; window.addEventListener('keydown', esc, true);
+  setTimeout(() => $('dlgOk').focus(), 0);
+});
 function setColor(c){
   S.color = c; $('custom').value = c;
   pal.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', s.dataset.color === c ? 'true' : 'false'));
@@ -1543,7 +1604,7 @@ function enterView(obj){
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v=')) location.reload(); });
 
 // ---------- collapsible sidebar sections ----------
-// Defaults: on phones only Color starts open (it sits right under the canvas); on wide screens Project and Mint start collapsed.
+// Defaults: on phones only Color starts open (it sits right under the canvas); on wide screens Project, Export and Mint start collapsed.
 // Each section's state is then remembered per browser.
 const secSet = {};
 {
@@ -1555,7 +1616,7 @@ const secSet = {};
       h.classList.toggle('collapsed', closed); b.setAttribute('aria-expanded', String(!closed));
       if (store){ saved[id] = closed; try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {} fitCanvas(); }
     };
-    set(typeof saved[id] === 'boolean' ? saved[id] : phone ? id !== 'color' : (id === 'project' || id === 'mint'), false);
+    set(typeof saved[id] === 'boolean' ? saved[id] : phone ? id !== 'color' : (id === 'project' || id === 'export' || id === 'mint'), false);
     b.addEventListener('click', () => set(!h.classList.contains('collapsed'), true));
     b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') e.stopPropagation(); }); // keep Space from toggling playback
   });

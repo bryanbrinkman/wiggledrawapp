@@ -7,12 +7,13 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Move tool: drag the whole layer, or nudge it with the arrow keys (Shift = 10 px)
 - Layers (add, hide, reorder, rename, delete)
 - **Frame-by-frame** mode (like Procreate's animation assist): a frame strip under the canvas, strokes belong to the frame you draw them on, **All frames** for backgrounds and holds, onion skin, add / duplicate / delete frames, up to 12. Wiggle still applies on top.
+- **Swatch setups**: the save and folder icons under the palette store the colours you added with **+** as a named setup and load one back (kept in the browser; the folder dialog also resets to the default swatches)
 - **Glitch** (in Layers) toggles a glitch effect on the selected layer: red and cyan colour‑split ghosts behind it and displaced slices on top, re‑rolled every frame. The preview, GIF, PNG and exported SVG all show the same thing. In the SVG it costs about 1.1 KB per glitched layer at three frames (two shared `feColorMatrix` filters, three `clipPath` bands, and a few `<use>` references per frame)
 - Adjustable wiggle amount, speed, and frame count; the amount can be set per layer with the **All layers / This layer** toggle
 - Undo / redo and keyboard shortcuts: `P L R O E G V` pick tools, `[ ]` brush size, `⌘/Ctrl+Z` undo, `⇧⌘/Ctrl+Z` redo, `Space` play/pause, `⌘/Ctrl+S` save, `F` full screen, `?` shows the list
 - Save / open projects as JSON, autosave to the browser
-- Collapsible sections (click a heading), each remembered in the browser. On wide screens **Project** and **Mint onchain** start collapsed. On phones **Color & brush** sits right under the canvas, the Title and size panel follows it, and every section below starts collapsed
-- The **Title** sits in the status bar under the canvas, always visible; it names downloads, the share link and the minted artwork
+- Collapsible sections (click a heading), each remembered in the browser. On wide screens **Project**, **Export & share** and **Mint onchain** start collapsed. On phones **Color & brush** sits right under the canvas, the Title and size panel follows it, and every section below starts collapsed
+- The **Title** is in the Project section; it names downloads, the share link and the minted artwork (the mint box's Artwork name is the same field)
 - Zoom the canvas with a two‑finger pinch, or Ctrl/⌘ + scroll (trackpad pinch) on desktop; scroll pans while zoomed and the percentage chip resets it. Drawing stays accurate at any zoom
 - On phones the tools and Undo/Redo stay pinned to the top while the page scrolls
 - A one‑time **Draw → Export → Mint** strip for first‑time visitors
