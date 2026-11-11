@@ -10,7 +10,7 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Adjustable wiggle amount, speed, and frame count; the amount can be set per layer with the **All layers / This layer** toggle
 - Undo / redo and keyboard shortcuts: `P L R O E G V` pick tools, `[ ]` brush size, `⌘/Ctrl+Z` undo, `⇧⌘/Ctrl+Z` redo, `Space` play/pause, `⌘/Ctrl+S` save, `F` full screen, `?` shows the list
 - Save / open projects as JSON, autosave to the browser
-- Collapsible sidebar sections (click a heading); **Project** and **Mint onchain** start collapsed, and each section's open/closed state is remembered in the browser
+- Collapsible sections (click a heading), each remembered in the browser. On wide screens **Project** and **Mint onchain** start collapsed. On phones **Color & brush** sits right under the canvas, the Title and size panel follows it, and every section below starts collapsed
 - The **Title** sits in the status bar under the canvas, always visible; it names downloads, the share link and the minted artwork
 - Zoom the canvas with a two‑finger pinch, or Ctrl/⌘ + scroll (trackpad pinch) on desktop; scroll pans while zoomed and the percentage chip resets it. Drawing stays accurate at any zoom
 - On phones the tools and Undo/Redo stay pinned to the top while the page scrolls

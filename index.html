@@ -71,7 +71,7 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
 .spacer{flex:1}
 main{flex:1;display:flex;flex-direction:column;min-height:0}
 .work,.side{display:contents}
-.side > *{order:3} .side > .tools,.side > .sec-tools{order:0} .stage{order:1} .status{order:1} .viewbar{order:2}
+.side > *{order:3} .side > .tools,.side > .sec-tools{order:0} .stage{order:1} .side > .sec-color{order:1} .status{order:2} .viewbar{order:2}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0;position:relative;overflow:hidden}
 .zoomchip{position:absolute;top:12px;right:12px;z-index:4}
 .zoomchip[hidden],.intro[hidden]{display:none}
@@ -80,7 +80,7 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
 .intro .step i{font-style:normal;font-weight:700;display:inline-block;min-width:1.5em;text-align:center;margin-right:2px;background:var(--accent);color:#fff}
 .sec.flash .sec-t{color:#fff;text-shadow:0 0 8px #fff}
 /* Phones: the page scrolls, and the tools (with Undo/Redo) stay pinned to the top. main must be as tall as its content for sticky to hold. */
-@media (max-width:719px){ .intro .long{display:none} main{flex:1 0 auto} .side > .tools{position:sticky;top:0;z-index:5;margin:0} }
+@media (max-width:719px){ .intro .long{display:none} .status{margin-top:6px} main{flex:1 0 auto} .side > .tools{position:sticky;top:0;z-index:5;margin:0} }
 .viewbar{display:none}
 .fs{font-size:18px;padding:4px 10px;line-height:1}
 .fs[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
@@ -90,6 +90,7 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
   .work{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
   .side{display:flex;flex-direction:column;gap:5px;width:min(440px,42vw);overflow:auto;padding:0 8px 10px 0;flex:none}
   .side > *{order:0}
+  .side > .sec-color{order:0}
   .side .bar{margin:0}
   .side .export{margin:0}
   .view .side{display:none}
@@ -271,6 +272,14 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button id="fs" class="fs" title="Full screen (F)">⛶</button>
 </div>
 
+<h2 class="sec sec-color" data-sec="color"><button class="sec-t" aria-expanded="true">Color &amp; brush <span class="dim">palette · brush size</span></button></h2>
+<div class="bar sec-color">
+  <div class="palette" id="palette"></div>
+  <input type="color" id="custom" value="#161616" title="Custom color">
+  <span class="spacer"></span>
+  <label class="sl" title="Brush size ( [ and ] )">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
+</div>
+
 <h2 class="sec" data-sec="layers"><button class="sec-t" aria-expanded="true">Layers <span class="dim">add · hide · reorder · frame-by-frame</span></button></h2>
 <div class="bar" aria-label="Layers">
   <div class="layers" id="layers"></div>
@@ -282,14 +291,6 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="clear" title="Remove every stroke on the selected layer">Clear</button>
   <button class="small" id="delLayer" title="Delete the selected layer">Delete</button>
   <button class="small" id="animMode" aria-pressed="false" title="Frame-by-frame: draw each frame separately, like Procreate's animation assist">Frame-by-frame</button>
-</div>
-
-<h2 class="sec" data-sec="color"><button class="sec-t" aria-expanded="true">Color &amp; brush <span class="dim">palette · brush size</span></button></h2>
-<div class="bar">
-  <div class="palette" id="palette"></div>
-  <input type="color" id="custom" value="#161616" title="Custom color">
-  <span class="spacer"></span>
-  <label class="sl" title="Brush size ( [ and ] )">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
 </div>
 
 <h2 class="sec" data-sec="wiggle"><button class="sec-t" aria-expanded="true">Wiggle <span class="dim">amount · speed · frames</span></button></h2>
@@ -1480,10 +1481,11 @@ function enterView(obj){
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v=')) location.reload(); });
 
 // ---------- collapsible sidebar sections ----------
-// Project and Mint start collapsed (see the markup); each section's state is remembered per browser.
+// Defaults: on phones only Color starts open (it sits right under the canvas); on wide screens Project and Mint start collapsed.
+// Each section's state is then remembered per browser.
 const secSet = {};
 {
-  const KEY = 'chainpainter:sections';
+  const KEY = 'chainpainter:sections:2', phone = matchMedia('(max-width:719px)').matches;
   let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch {}
   document.querySelectorAll('.sec[data-sec]').forEach(h => {
     const b = h.querySelector('.sec-t'), id = h.dataset.sec;
@@ -1491,7 +1493,7 @@ const secSet = {};
       h.classList.toggle('collapsed', closed); b.setAttribute('aria-expanded', String(!closed));
       if (store){ saved[id] = closed; try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {} fitCanvas(); }
     };
-    if (typeof saved[id] === 'boolean') set(saved[id], false);
+    set(typeof saved[id] === 'boolean' ? saved[id] : phone ? id !== 'color' : (id === 'project' || id === 'mint'), false);
     b.addEventListener('click', () => set(!h.classList.contains('collapsed'), true));
     b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') e.stopPropagation(); }); // keep Space from toggling playback
   });
