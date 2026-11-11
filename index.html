@@ -72,7 +72,15 @@ button:focus-visible,.tool:focus-visible,input:focus-visible{outline:3px solid v
 main{flex:1;display:flex;flex-direction:column;min-height:0}
 .work,.side{display:contents}
 .side > *{order:3} .side > .tools,.side > .sec-tools{order:0} .stage{order:1} .status{order:1} .viewbar{order:2}
-.stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0;position:relative;overflow:hidden}
+.zoomchip{position:absolute;top:12px;right:12px;z-index:4}
+.zoomchip[hidden],.intro[hidden]{display:none}
+.intro{font-size:13px;color:var(--ink);margin-top:0;margin-bottom:6px;position:relative;padding-right:46px}
+#introX{position:absolute;top:6px;right:6px}
+.intro .step i{font-style:normal;font-weight:700;display:inline-block;min-width:1.5em;text-align:center;margin-right:2px;background:var(--accent);color:#fff}
+.sec.flash .sec-t{color:#fff;text-shadow:0 0 8px #fff}
+/* Phones: the page scrolls, and the tools (with Undo/Redo) stay pinned to the top. main must be as tall as its content for sticky to hold. */
+@media (max-width:719px){ main{flex:1 0 auto} .side > .tools{position:sticky;top:0;z-index:5;margin:0} }
 .viewbar{display:none}
 .fs{font-size:18px;padding:4px 10px;line-height:1}
 .fs[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
@@ -99,7 +107,7 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
   .bar{margin:0 4px;padding:4px}
   canvas#c{box-shadow:3px 3px 0 var(--desk-deep)}
 }
-canvas#c{background:var(--paper);touch-action:none;max-width:100%;max-height:100%;border:2px solid var(--chrome-edge);box-shadow:4px 4px 0 var(--desk-deep);image-rendering:auto;cursor:crosshair}
+canvas#c{background:var(--paper);touch-action:none;transform-origin:0 0;max-width:100%;max-height:100%;border:2px solid var(--chrome-edge);box-shadow:4px 4px 0 var(--desk-deep);image-rendering:auto;cursor:crosshair}
 canvas#c[data-tool="move"]{cursor:move}
 canvas#c[data-tool="fill"]{cursor:cell}
 canvas#c.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),4px 4px 0 var(--desk-deep);cursor:not-allowed}
@@ -172,6 +180,8 @@ body.view .frames{display:none !important}
 #allFrames[aria-pressed="true"],#onion[aria-pressed="true"],#animMode[aria-pressed="true"],#fplay[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:#8a2812}
 .status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 8px 8px;padding:6px 8px;background:var(--chrome);border:2px solid var(--chrome-edge);box-shadow:var(--shadow);font-size:13px}
 .status .stat{color:var(--muted)}
+.titlebox{display:flex;align-items:center;gap:6px;flex:1 1 170px;min-width:0;max-width:280px;color:var(--ink)}
+.titlebox input{flex:1;min-width:0;font:inherit;font-size:14px;padding:3px 6px;border:2px solid var(--chrome-edge);background:var(--paper);color:#161616;-webkit-user-select:text;user-select:text}
 .status #fit{display:none}
 .status[data-over="1"] #fit{display:inline-block;background:var(--accent);color:#fff;border-color:#8a2812}
 .view .status{display:none}
@@ -204,7 +214,14 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
 
 <main>
 <section class="work">
-<div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas></div>
+<div class="bar intro" id="intro" hidden>
+  <b>New here?</b>
+  <span class="step"><i>1</i> Draw on the canvas</span>
+  <button class="small step" data-go="export" title="Open Export &amp; share"><i>2</i> Export or share it</button>
+  <button class="small step" data-go="mint" title="Open Mint onchain"><i>3</i> Mint it onchain</button>
+  <button class="small" id="introX" title="Hide this tip" aria-label="Hide this tip">×</button>
+</div>
+<div class="stage"><canvas id="c" aria-label="Drawing canvas"></canvas><button class="small zoomchip" id="zoomReset" hidden title="Reset zoom (pinch, or Ctrl/⌘ + scroll, to zoom)">100% ×</button></div>
 <div class="bar frames" id="framesBar" aria-label="Frames">
   <button class="small" id="frPrev" title="Previous frame ( , )">◀</button>
   <div class="frlist" id="frlist"></div>
@@ -218,10 +235,11 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="onion" aria-pressed="true" title="Show the previous and next frames faintly">Onion</button>
 </div>
 <div class="status" id="status" aria-live="polite">
-  <span class="budget" id="budget" title="Onchain token URI size — Transient Labs requires under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
+  <label class="titlebox" title="Name of this drawing: used for downloads, the share link and the minted artwork">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
+  <span class="budget" id="budget" title="Raw SVG size — ABX keeps onchain images under 24 KB"><i><b></b></i><span id="budgetOut">0 / 24 KB</span></span>
   <span class="stat" id="stat">0 strokes</span>
   <span class="spacer"></span>
-  <button class="small" id="fit" title="Simplify strokes (then reduce frames) until the token URI is under 24 KB">Fit to 24 KB</button>
+  <button class="small" id="fit" title="Simplify strokes (then reduce frames) until the SVG is under 24 KB">Fit to 24 KB</button>
 </div>
 
 <div class="bar viewbar" aria-label="Shared drawing">
@@ -295,11 +313,8 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   </select></label>
 </div>
 
-<h2 class="sec collapsed" data-sec="project"><button class="sec-t" aria-expanded="false">Project <span class="dim">title · new · open · save</span></button></h2>
+<h2 class="sec collapsed" data-sec="project"><button class="sec-t" aria-expanded="false">Project <span class="dim">new · open · save</span></button></h2>
 <div class="export">
-  <div class="row">
-    <label class="field">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
-  </div>
   <div class="row">
     <button id="newProj" title="Start a blank drawing">New</button>
     <button id="openProj" title="Open a saved .chainpainter.json file">Open…</button>
@@ -582,8 +597,10 @@ function fitCanvas(){
   // Backing store follows the displayed size (capped) so strokes stay crisp however big the canvas gets.
   dpr = Math.min(window.devicePixelRatio || 1, 3) * sc;
   if (cssW * dpr / sc > 4096 || cssH * dpr / sc > 4096) dpr = 4096 / Math.max(S.w, S.h);
+  // Zoomed in: render more pixels so lines stay sharp, within a size phones can afford.
+  if (view.z > 1) dpr = Math.max(dpr, Math.min(dpr * view.z, 2560 / Math.max(S.w, S.h)));
   cv.width = Math.round(S.w * dpr); cv.height = Math.round(S.h * dpr);
-  draw();
+  applyView(); draw();
 }
 // ---------- full screen ----------
 const fsRoot = document.documentElement;
@@ -706,6 +723,60 @@ function pos(e){
   const r = cv.getBoundingClientRect();
   return [ (e.clientX - r.left) * S.w / r.width, (e.clientY - r.top) * S.h / r.height ];
 }
+// ---------- zoom & pan: two-finger pinch on touch, Ctrl/⌘ + wheel (or a trackpad pinch) on desktop ----------
+// The canvas is zoomed with a CSS transform. pos() reads the transformed box, so drawing stays accurate at any zoom.
+const view = { z: 1, x: 0, y: 0 }, ZOOM_MAX = 8;
+function applyView(){
+  const W = cv.offsetWidth, H = cv.offsetHeight;
+  view.z = Math.max(1, Math.min(ZOOM_MAX, view.z));
+  view.x = Math.min(0, Math.max(W * (1 - view.z), view.x)); view.y = Math.min(0, Math.max(H * (1 - view.z), view.y));   // the canvas always covers its own frame
+  cv.style.transform = view.z === 1 ? '' : 'translate(' + view.x + 'px,' + view.y + 'px) scale(' + view.z + ')';
+  const chip = $('zoomReset'); chip.hidden = view.z === 1; chip.textContent = Math.round(view.z * 100) + '% ×';
+}
+function zoomAt(cx, cy, z){   // zoom while keeping the canvas point under client (cx, cy) where it is
+  const r = cv.getBoundingClientRect(), ox = r.left - view.x, oy = r.top - view.y, ux = (cx - r.left) / view.z, uy = (cy - r.top) / view.z;
+  view.z = Math.max(1, Math.min(ZOOM_MAX, z)); view.x = cx - ox - ux * view.z; view.y = cy - oy - uy * view.z; applyView();
+}
+let sharpT = 0;
+const sharpen = () => { clearTimeout(sharpT); sharpT = setTimeout(fitCanvas, 160); };   // once the gesture settles, re-render at the new zoom
+$('zoomReset').addEventListener('click', () => { view.z = 1; view.x = view.y = 0; fitCanvas(); });
+const touches = new Map(); let pinch = null, pendingFill = null;
+function abortStroke(){   // a second finger landed: whatever the first finger began was not a stroke
+  if (moving){ translateLayer(layer(), -moved[0], -moved[1], moveFrame()); moving = false; cache = null; }
+  drawing = false; live = null; pendingFill = null; draw();
+}
+// Registered before the drawing handlers so a pinch can swallow its own events.
+cv.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'touch') return;
+  touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (touches.size < 2) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (touches.size > 2) return;
+  abortStroke();
+  const [a, b] = [...touches.values()], r = cv.getBoundingClientRect(), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, z: view.z, ox: r.left - view.x, oy: r.top - view.y, ux: (mx - r.left) / view.z, uy: (my - r.top) / view.z };
+});
+cv.addEventListener('pointermove', e => {
+  if (!touches.has(e.pointerId)) return;
+  touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (!pinch) return;
+  e.stopImmediatePropagation();
+  const [a, b] = [...touches.values()]; if (!b) return;
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  view.z = Math.max(1, Math.min(ZOOM_MAX, pinch.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d));
+  view.x = mx - pinch.ox - pinch.ux * view.z; view.y = my - pinch.oy - pinch.uy * view.z; applyView();
+});
+const endTouch = e => {
+  if (!touches.delete(e.pointerId) || !pinch) return;
+  e.stopImmediatePropagation();
+  if (touches.size < 2){ pinch = null; sharpen(); }
+};
+cv.addEventListener('pointerup', endTouch); cv.addEventListener('pointercancel', endTouch);
+cv.parentElement.addEventListener('wheel', e => {
+  if (e.ctrlKey || e.metaKey){ e.preventDefault(); const dy = Math.max(-25, Math.min(25, e.deltaY * (e.deltaMode === 1 ? 16 : 1))); zoomAt(e.clientX, e.clientY, view.z * Math.exp(-dy * 0.01)); sharpen(); }
+  else if (view.z > 1){ e.preventDefault(); view.x -= e.deltaX; view.y -= e.deltaY; applyView(); }   // zoomed in: the wheel pans
+}, { passive: false });
+
 cv.addEventListener('pointerdown', e => {
   if (viewing) return;
   if (!layer().visible){ toast('This layer is hidden'); return; }
@@ -714,7 +785,7 @@ cv.addEventListener('pointerdown', e => {
     e.preventDefault(); cv.setPointerCapture(e.pointerId); moving = true; start = pos(e); moved = [0, 0]; return;
   }
   if (budgetBytes() > LIMIT()){ e.preventDefault(); flashCanvas(); toast(FULL_MSG); return; }
-  if (S.tool === 'fill'){ e.preventDefault(); bucketAt(pos(e)); return; }
+  if (S.tool === 'fill'){ e.preventDefault(); if (e.pointerType === 'touch') pendingFill = { id: e.pointerId, p: pos(e) }; else bucketAt(pos(e)); return; }
   e.preventDefault(); cv.setPointerCapture(e.pointerId);
   drawing = true; start = pos(e); raw = [start];
   live = { color: S.color, size: S.size, erase: S.tool === 'eraser', pts: [start], closed: false, sharp: false };
@@ -734,6 +805,7 @@ cv.addEventListener('pointermove', e => {
   if (!drawing) return; applyMove(pos(e)); if (!S.playing) draw();
 });
 cv.addEventListener('pointerup', e => {
+  if (pendingFill && pendingFill.id === e.pointerId){ const f = pendingFill; pendingFill = null; bucketAt(f.p); return; }
   if (moving){ dragMove(e); moving = false; if (moved[0] || moved[1]) recordMove(layer(), moved[0], moved[1]); invalidate(); draw(); return; }
   if (!drawing) return; drawing = false;
   applyMove(pos(e));
@@ -744,7 +816,7 @@ cv.addEventListener('pointerup', e => {
 });
 cv.addEventListener('pointercancel', () => {
   if (moving){ moving = false; if (moved[0] || moved[1]) recordMove(layer(), moved[0], moved[1]); invalidate(); }
-  drawing = false; live = null; draw();
+  drawing = false; live = null; pendingFill = null; draw();
 });
 
 // ---------- in-page dialogs (styled to match the app; also work where native confirm/prompt are blocked) ----------
@@ -831,7 +903,7 @@ function copyDialog(text, label){
 function showHelp(){
   const groups = [
     ['Tools', [['P', 'Pencil'], ['L', 'Line'], ['R', 'Rectangle'], ['O', 'Ellipse'], ['E', 'Eraser'], ['G', 'Fill bucket'], ['V', 'Move layer']]],
-    ['Drawing', [['[  ]', 'Brush size'], ['Ctrl/⌘ Z', 'Undo'], ['Shift Ctrl/⌘ Z', 'Redo'], ['Arrows', 'Nudge layer (Move tool)'], ['Shift Arrows', 'Nudge 10 px']]],
+    ['Drawing', [['[  ]', 'Brush size'], ['Pinch / Ctrl+scroll', 'Zoom the canvas'], ['Ctrl/⌘ Z', 'Undo'], ['Shift Ctrl/⌘ Z', 'Redo'], ['Arrows', 'Nudge layer (Move tool)'], ['Shift Arrows', 'Nudge 10 px']]],
     ['Frames', [[', .', 'Previous / next frame (frame-by-frame)']]],
     ['App', [['Space', 'Play / pause'], ['Ctrl/⌘ S', 'Save project'], ['F', 'Full screen'], ['?', 'This list']]],
   ];
@@ -1409,12 +1481,13 @@ window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v='
 
 // ---------- collapsible sidebar sections ----------
 // Project and Mint start collapsed (see the markup); each section's state is remembered per browser.
+const secSet = {};
 {
   const KEY = 'chainpainter:sections';
   let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch {}
   document.querySelectorAll('.sec[data-sec]').forEach(h => {
     const b = h.querySelector('.sec-t'), id = h.dataset.sec;
-    const set = (closed, store) => {
+    const set = secSet[id] = (closed, store) => {
       h.classList.toggle('collapsed', closed); b.setAttribute('aria-expanded', String(!closed));
       if (store){ saved[id] = closed; try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {} fitCanvas(); }
     };
@@ -1422,6 +1495,20 @@ window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v='
     b.addEventListener('click', () => set(!h.classList.contains('collapsed'), true));
     b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') e.stopPropagation(); }); // keep Space from toggling playback
   });
+}
+function openSection(id){
+  const h = document.querySelector('.sec[data-sec="' + id + '"]'); if (!h) return;
+  secSet[id](false, true);
+  h.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  h.classList.add('flash'); setTimeout(() => h.classList.remove('flash'), 1200);
+}
+// ---------- first-visit strip: Draw → Export → Mint ----------
+{
+  const KEY = 'chainpainter:intro', intro = $('intro');
+  let seen = false; try { seen = localStorage.getItem(KEY) === '1'; } catch {}
+  intro.hidden = seen;
+  $('introX').addEventListener('click', () => { intro.hidden = true; try { localStorage.setItem(KEY, '1'); } catch {} fitCanvas(); });
+  intro.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => openSection(b.dataset.go)));
 }
 // ---------- bridge for the mint module (the last script block) ----------
 const changeHooks = [];
@@ -1619,21 +1706,50 @@ const collsHere = () => loadColls().filter(c => c.chain === CP().chain());
 
 // ───────────────────────── wallet (EIP-1193 + EIP-6963) ─────────────────────────
 const providers = [];
-window.addEventListener('eip6963:announceProvider', e => { if (!providers.some(p => p.info.uuid === e.detail.info.uuid)) providers.push(e.detail); render(); });
+window.addEventListener('eip6963:announceProvider', e => { if (!providers.some(p => p.info.uuid === e.detail.info.uuid)) providers.push(e.detail); render(); reconnect(); });
 window.dispatchEvent(new Event('eip6963:requestProvider'));
 let eth = null, account = null, chainId = null, busy = false, txState = null;
 const rpc = (method, params = []) => eth.request({ method, params });
 const call = (to, data) => rpc('eth_call', [{ to, data }, 'latest']);
 async function readChain(){ try { chainId = parseInt(await rpc('eth_chainId'), 16); } catch { chainId = null; } }
+const LS_WALLET = 'chainpainter:wallet';  // remembers that a wallet was connected (and which one), never any key
+const hooked = new WeakSet();
+async function attach(p, accs){
+  eth = p; account = accs[0] ? checksum(accs[0]) : null; await readChain();
+  if (p.on && !hooked.has(p)){
+    hooked.add(p);
+    p.on('accountsChanged', a => { if (eth !== p) return; account = a[0] ? checksum(a[0]) : null; txState = null; gallery.key = ''; render(); });
+    p.on('chainChanged', async () => { if (eth !== p) return; await readChain(); txState = null; gallery.key = ''; render(); });
+  }
+}
+const rdnsOf = p => (providers.find(x => x.provider === p) || { info: {} }).info.rdns || '';
 async function connect(p){
-  eth = p || (providers[0] && providers[0].provider) || window.ethereum;
-  if (!eth){ setStatus('No wallet found. Install MetaMask, Rabby or Coinbase Wallet, or open this page inside your wallet app.', 'err'); return; }
+  p = p || (providers[0] && providers[0].provider) || window.ethereum;
+  if (!p){ setStatus('No wallet found. Install MetaMask, Rabby or Coinbase Wallet, or open this page inside your wallet app.', 'err'); return; }
   try {
-    const accs = await rpc('eth_requestAccounts'); account = accs[0] ? checksum(accs[0]) : null; await readChain();
-    eth.on && eth.on('accountsChanged', a => { account = a[0] ? checksum(a[0]) : null; txState = null; render(); });
-    eth.on && eth.on('chainChanged', async () => { await readChain(); txState = null; render(); });
+    const accs = await p.request({ method: 'eth_requestAccounts', params: [] });
+    await attach(p, accs);
+    try { localStorage.setItem(LS_WALLET, JSON.stringify({ rdns: rdnsOf(p) })); } catch {}
     render();
-  } catch (e){ setStatus(e.message || String(e), 'err'); }
+  } catch (e){ setStatus(friendly(e), 'err'); }
+}
+// Returning visitors: eth_accounts never opens a prompt, it only answers if this site is still approved in the wallet.
+let reconnecting = false;
+async function reconnect(){
+  if (account || reconnecting) return;
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(LS_WALLET) || 'null'); } catch {}
+  if (!saved) return;
+  const match = providers.find(x => x.info.rdns === saved.rdns);
+  const p = match ? match.provider : (saved.rdns ? null : window.ethereum);   // a named wallet that has not announced itself yet: retried on announce
+  if (!p) return;
+  reconnecting = true;
+  try { const accs = await p.request({ method: 'eth_accounts', params: [] }); if (accs && accs[0]){ await attach(p, accs); render(); } } catch {}
+  reconnecting = false;
+}
+function disconnect(){
+  try { localStorage.removeItem(LS_WALLET); } catch {}
+  try { const r = eth && eth.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); r && r.catch && r.catch(() => {}); } catch {}
+  account = null; txState = null; gallery.key = ''; render();
 }
 async function switchChain(key){
   const c = CHAINS[key]; const hex = '0x' + c.id.toString(16);
@@ -1661,41 +1777,32 @@ const validLink = u => !u || /^https?:\/\/\S+$/i.test(u);
 const symbolFor = name => { const s = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); return s || 'ART'; };
 const selected = () => collsHere().find(c => c.address === pick) || null;
 async function requireCode(addr, what){ const code = await rpc('eth_getCode', [addr, 'latest']); if (!code || code === '0x') throw new Error(what); }
-async function send(to, data){
+async function estimate(to, data){
   const gas = BigInt(await rpc('eth_estimateGas', [{ from: account, to, data }]));
-  const hash = await rpc('eth_sendTransaction', [{ from: account, to, data, value: '0x0', gas: '0x' + ((gas * 125n) / 100n).toString(16) }]);
-  txState = { ...txState, stage: 'pending', hash }; render();
-  let receipt = null;
-  for (let i = 0; i < 400 && !receipt; i++){ await new Promise(r => setTimeout(r, 3000)); receipt = await rpc('eth_getTransactionReceipt', [hash]).catch(() => null); }
-  if (!receipt) throw new Error('Still pending after 20 minutes. Check the explorer link.');
-  if (receipt.status !== '0x1') throw new Error('The transaction reverted. Nothing changed; gas was spent.');
-  return { hash, receipt };
+  let feeWei = null; try { feeWei = gas * BigInt(await rpc('eth_gasPrice')); } catch {}
+  return { gas, feeWei };
 }
-// Create contract: deploy an empty Series (no artwork yet) via the canonical factory.
-async function createContract(){
+// Step 1 of either action: check everything and estimate the fee, then show a review. Nothing is sent yet.
+async function reviewContract(){
   const c = wanted(); const name = form.collName.trim();
   if (!name){ setStatus('Give the contract a name first.', 'err'); return; }
-  busy = true; txState = { stage: 'signing', kind: 'contract', chain: c, name }; render();
+  busy = true; txState = { stage: 'estimating', kind: 'contract', chain: c }; render();
   try {
     await requireCode(SERIES_FACTORY, 'ABX is not deployed on ' + c.name + ' yet.');
     const params = buildSeriesParams({ owner: account, name, symbol: symbolFor(name), about: '', size: DEFAULT_SIZE, piece: null });
     const salt = saltFor(account);
     const predicted = decodeAddress(await call(SERIES_FACTORY, encodePredict(salt)));
-    const { hash, receipt } = await send(SERIES_FACTORY, encodeSeriesDeploy(params, salt));
-    const code = await rpc('eth_getCode', [predicted, 'latest']).catch(() => '0x');
-    if (!code || code === '0x') throw new Error('Confirmed, but no contract found at ' + predicted + '. Check the transaction.');
+    const data = encodeSeriesDeploy(params, salt);
     const coll = { chain: CP().chain(), address: predicted, name, symbol: params.symbol, size: DEFAULT_SIZE, minted: 0 };
-    remember(coll); pick = predicted; form.collName = '';
-    txState = { stage: 'done', kind: 'contract', chain: c, hash, receipt, contract: predicted, coll };
-  } catch (e){ txState = { stage: 'error', kind: 'contract', chain: c, msg: friendly(e), hash: txState.hash }; }
+    txState = { stage: 'review', kind: 'contract', chain: c, to: SERIES_FACTORY, data, predicted, coll, ...(await estimate(SERIES_FACTORY, data)) };
+  } catch (e){ txState = { stage: 'error', kind: 'contract', chain: c, msg: friendly(e) }; }
   busy = false; render();
 }
-// Mint artwork: set the next token's fields and mint it to you, atomically, on the selected contract.
-async function mintArtwork(){
+async function reviewArtwork(){
   const c = wanted(); const coll = selected();
   if (!coll){ setStatus('Create a contract first, or pick one.', 'err'); return; }
   if (!CP().strokes()){ setStatus('Draw something first.', 'err'); return; }
-  busy = true; txState = { stage: 'signing', kind: 'artwork', chain: c, coll }; render();
+  busy = true; txState = { stage: 'estimating', kind: 'artwork', chain: c }; render();
   try {
     await requireCode(coll.address, 'No contract at ' + coll.address + ' on ' + c.name + '.');
     const owner = decodeAddress(await call(coll.address, view('owner')));
@@ -1704,12 +1811,83 @@ async function mintArtwork(){
     if (next >= max) throw new Error(coll.name + ' is full: all ' + max + ' artworks are minted. Create a new contract.');
     const link = form.link.trim(); if (!validLink(link)) throw new Error('The external link must start with http:// or https://.');
     const svg = CP().svg(); const piece = { name: CP().name(), description: CP().desc(), svg, attributes: attributesJSON(form.traits), externalUrl: link };
-    const { hash, receipt } = await send(coll.address, encodeMintPiece(next, piece, account));
-    const ids = mintedIds(receipt, coll.address); const tokenId = ids.length ? ids[0] : next;
-    remember({ ...coll, minted: Number(tokenId) + 1 });
-    txState = { stage: 'done', kind: 'artwork', chain: c, hash, receipt, contract: coll.address, coll, tokenId, piece, bytes: utf8(svg).length };
-  } catch (e){ txState = { stage: 'error', kind: 'artwork', chain: c, msg: friendly(e), hash: txState.hash }; }
+    const data = encodeMintPiece(next, piece, account);
+    txState = { stage: 'review', kind: 'artwork', chain: c, to: coll.address, data, coll, tokenId: next, piece, bytes: utf8(svg).length, ...(await estimate(coll.address, data)) };
+  } catch (e){ txState = { stage: 'error', kind: 'artwork', chain: c, msg: friendly(e) }; }
   busy = false; render();
+}
+// Step 2: send exactly what was reviewed.
+async function confirmTx(){
+  const t = txState; if (!t || t.stage !== 'review') return;
+  busy = true; txState = { ...t, stage: 'signing' }; render();
+  try {
+    const hash = await rpc('eth_sendTransaction', [{ from: account, to: t.to, data: t.data, value: '0x0', gas: '0x' + ((t.gas * 125n) / 100n).toString(16) }]);
+    txState = { ...t, stage: 'pending', hash }; render();
+    let receipt = null;
+    for (let i = 0; i < 400 && !receipt; i++){ await new Promise(r => setTimeout(r, 3000)); receipt = await rpc('eth_getTransactionReceipt', [hash]).catch(() => null); }
+    if (!receipt) throw new Error('Still pending after 20 minutes. Check the explorer link.');
+    if (receipt.status !== '0x1') throw new Error('The transaction reverted. Nothing changed; gas was spent.');
+    if (t.kind === 'contract'){
+      const code = await rpc('eth_getCode', [t.predicted, 'latest']).catch(() => '0x');
+      if (!code || code === '0x') throw new Error('Confirmed, but no contract found at ' + t.predicted + '. Check the transaction.');
+      remember(t.coll); pick = t.predicted; form.collName = '';
+      txState = { ...t, stage: 'done', hash, receipt, contract: t.predicted };
+    } else {
+      const ids = mintedIds(receipt, t.coll.address); const tokenId = ids.length ? ids[0] : t.tokenId;
+      remember({ ...t.coll, minted: Number(tokenId) + 1 }); gallery.key = '';   // reload the gallery with the new piece
+      txState = { ...t, stage: 'done', hash, receipt, contract: t.coll.address, tokenId };
+    }
+  } catch (e){ txState = { ...t, stage: 'error', msg: friendly(e), hash: txState.hash }; }
+  busy = false; render();
+}
+// A review shows exactly what will be sent; any change to the drawing or its details makes it stale.
+function invalidateReview(){ if (txState && txState.stage === 'review'){ txState = null; renderResult(); } }
+
+// ───────────────────────── gallery: what is already in the selected contract, read from the chain ─────────────────────────
+const GALLERY_MAX = 12;
+const gallery = { key: '', items: [], total: 0, loading: false, err: '' };
+function parseTokenURI(uri){
+  const i = uri.indexOf(','); if (!/^data:application\/json/i.test(uri) || i < 0) throw new Error('unexpected tokenURI');
+  const body = uri.slice(i + 1);
+  const text = /;base64$/i.test(uri.slice(0, i)) ? new TextDecoder().decode(Uint8Array.from(atob(body), ch => ch.charCodeAt(0))) : decodeURIComponent(body);
+  return JSON.parse(text);
+}
+const safeImage = u => typeof u === 'string' && /^(data:image\/|https:\/\/)/i.test(u) ? u : '';   // only ever used as an <img> source
+async function loadGallery(){
+  const c = wanted(), coll = selected();
+  if (!coll || !account || chainId !== c.id) return;
+  const key = c.id + ':' + coll.address.toLowerCase();
+  if (gallery.key === key) return;
+  Object.assign(gallery, { key, items: [], total: 0, loading: true, err: '' }); renderGallery();
+  try {
+    const next = Number(decodeUint(await call(coll.address, view('nextTokenId'))));
+    if (gallery.key !== key) return;
+    gallery.total = next;
+    if ((coll.minted || 0) !== next) remember({ ...coll, minted: next });
+    for (let id = next - 1; id >= 0 && id >= next - GALLERY_MAX; id--){
+      try {
+        const meta = parseTokenURI(decodeString(await call(coll.address, encodeCall('tokenURI', [{ type: 'uint256' }], [id]))));
+        if (gallery.key !== key) return;
+        gallery.items.push({ id, name: typeof meta.name === 'string' ? meta.name : '#' + id, image: safeImage(meta.image) }); renderGallery();
+      } catch {}
+    }
+  } catch (e){ if (gallery.key === key) gallery.err = friendly(e); }
+  if (gallery.key === key){ gallery.loading = false; renderGallery(); }
+}
+function renderGallery(){
+  const g = galleryEl; if (!g) return; g.innerHTML = '';
+  const c = wanted(), coll = selected();
+  if (!coll || !account || chainId !== c.id || gallery.key !== c.id + ':' + coll.address.toLowerCase()) return;
+  if (gallery.err){ g.append(el('div', { class: 'hint' }, 'Could not read the contract: ' + gallery.err)); return; }
+  if (!gallery.total && !gallery.loading){ g.append(el('div', { class: 'hint' }, 'Nothing minted in this contract yet.')); return; }
+  g.append(el('div', { class: 'lbl' }, 'In this contract ', el('span', { class: 'hint' }, gallery.loading ? 'reading from the chain…' : gallery.total + ' artwork' + (gallery.total === 1 ? '' : 's') + ', newest first')));
+  const strip = el('div', { class: 'strip' }); g.append(strip);
+  gallery.items.forEach(it => {
+    const a = el('a', { class: 'piece', href: c.explorer + '/nft/' + coll.address + '/' + it.id, target: '_blank', rel: 'noopener', title: '#' + it.id + ' · ' + it.name });
+    a.append(it.image ? el('img', { src: it.image, alt: it.name, loading: 'lazy' }) : el('span', { class: 'noimg' }, '?'), el('span', { class: 'cap' }, '#' + it.id));
+    strip.append(a);
+  });
+  if (!gallery.loading && gallery.total > gallery.items.length) strip.append(link(c.explorer + '/token/' + coll.address, '+' + (gallery.total - gallery.items.length) + ' more ↗'));
 }
 // Remember a contract deployed elsewhere (abx CLI, another browser) after checking it on-chain.
 async function addExisting(){
@@ -1736,7 +1914,7 @@ function friendly(e){
 const short = a => a ? a.slice(0, 6) + '…' + a.slice(-4) : '';
 
 // ───────────────────────── UI ─────────────────────────
-let root = null, statusEl = null;
+let root = null, statusEl = null, resultEl = null, galleryEl = null;
 function setStatus(msg, kind){ if (statusEl){ statusEl.textContent = msg; statusEl.dataset.kind = kind || ''; } }
 function el(tag, attrs = {}, ...kids){ const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)){ if (k === 'onclick') n.onclick = v; else if (k === 'oninput') n.oninput = v; else if (k === 'onchange') n.onchange = v; else if (k === 'html') n.innerHTML = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; }
 const link = (href, text) => el('a', { href, target: '_blank', rel: 'noopener' }, text);
@@ -1748,7 +1926,41 @@ function setNet(test){
   const sel = $('abxChain'); if (sel && sel.value !== target){ sel.value = target; sel.dispatchEvent(new Event('change', { bubbles: true })); }
   txState = null; if (!selected()) pick = (collsHere()[0] || {}).address || ''; render();
 }
-function input(key, attrs){ return el('input', { type: 'text', value: form[key], oninput: e => { form[key] = e.target.value; }, ...attrs }); }
+const fmtEth = wei => wei == null ? 'shown in your wallet' : '≈ ' + (Number(wei) / 1e18).toLocaleString(undefined, { maximumSignificantDigits: 3 }) + ' ' + wanted().sym;
+const extrasOf = piece => [piece.description ? 'description' : '', piece.attributes ? JSON.parse(piece.attributes).length + ' trait' + (JSON.parse(piece.attributes).length > 1 ? 's' : '') : '', piece.externalUrl ? 'link' : ''].filter(Boolean);
+function renderResult(){
+  const r = resultEl; if (!r) return; r.innerHTML = '';
+  const c = wanted(), t = txState; if (!t) return;
+  if (t.stage === 'estimating') r.append(el('div', { class: 'hint' }, 'Checking the contract and estimating the fee…'));
+  else if (t.stage === 'review' || t.stage === 'signing'){
+    const box = el('div', { class: 'review', id: 'review' }); r.append(box);
+    const rows = t.kind === 'contract'
+      ? [['Create contract', t.coll.name + ' (' + t.coll.symbol + ')'], ['Holds', 'up to ' + DEFAULT_SIZE.toLocaleString() + ' artworks · 5% royalty to you'], ['Address will be', short(t.predicted)]]
+      : [['Mint', t.piece.name + ' as #' + t.tokenId + ' of ' + t.coll.name], ['Stored on-chain', [(t.bytes / 1024).toFixed(1) + ' KB SVG', 'name', ...extrasOf(t.piece)].join(' · ')]];
+    rows.push(['Network', t.chain.name + (t.chain.testnet ? ' · testnet, free' : ' · real funds')], ['Estimated fee', fmtEth(t.feeWei) + ' · gas ' + t.gas.toLocaleString()]);
+    const tbl = el('table', { class: 'kv' }); rows.forEach(([k, v]) => tbl.append(el('tr', {}, el('td', {}, k), el('td', {}, v))));
+    const top = el('div', { class: 'rv' }); box.append(top);
+    if (t.kind === 'artwork') top.append(el('img', { class: 'thumb', alt: 'Artwork preview', src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(t.piece.svg) }));
+    top.append(tbl);
+    if (t.stage === 'review') box.append(el('div', { class: 'row' },
+      el('button', { class: 'primary', id: 'confirmBtn', onclick: confirmTx }, (t.kind === 'contract' ? 'Confirm & create' : 'Confirm & mint') + ' on ' + t.chain.name),
+      el('button', { class: 'small', id: 'cancelBtn', onclick: () => { txState = null; renderResult(); } }, 'Cancel'),
+      el('span', { class: 'hint' }, 'Your wallet shows the final fee.')));
+    else box.append(el('div', { class: 'hint' }, 'Confirm in your wallet…'));
+  }
+  else if (t.stage === 'pending') r.append(el('div', { class: 'hint' }, 'Sent. Waiting for confirmation… ', link(t.chain.explorer + '/tx/' + t.hash, 'view transaction ↗')));
+  else if (t.stage === 'done'){
+    if (t.kind === 'contract') r.append(el('b', { class: 'ok' }, '✓ Contract created. '), el('b', {}, t.coll.name), ' at ', link(t.chain.explorer + '/address/' + t.contract, short(t.contract) + ' ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'), el('div', { class: 'hint' }, 'It is selected above. Now name the artwork and mint it.'));
+    else {
+      const id = t.tokenId.toString();
+      r.append(el('b', { class: 'ok' }, '✓ Minted. '), el('b', {}, t.piece.name), ' is #' + id + ' of ' + t.coll.name + ' · ', link(t.chain.explorer + '/address/' + t.contract, 'contract ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'));
+      if (t.chain.opensea) r.append(' · ', link('https://opensea.io/assets/' + t.chain.opensea + '/' + t.contract.toLowerCase() + '/' + id, 'OpenSea ↗'));
+      r.append(el('div', { class: 'hint' }, (t.bytes / 1024).toFixed(1) + ' KB of SVG stored on-chain' + (t.piece.attributes ? ', with ' + JSON.parse(t.piece.attributes).length + ' traits' : '') + '. Marketplaces may take a few minutes to index. Draw the next one and mint again.'));
+    }
+  }
+  else if (t.stage === 'error') r.append(el('div', { class: 'err' }, t.msg), t.hash ? link(c.explorer + '/tx/' + t.hash, ' transaction ↗') : '');
+}
+function input(key, attrs){ return el('input', { type: 'text', value: form[key], oninput: e => { form[key] = e.target.value; if (key === 'collName' && txState && txState.kind === 'contract') invalidateReview(); }, ...attrs }); }
 function render(){
   if (!root) return;
   const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : null;
@@ -1768,13 +1980,14 @@ function render(){
     else w.append(el('button', { class: 'primary', onclick: () => connect() }, 'Connect wallet'));
   } else {
     const onRight = chainId === c.id;
-    w.append('Wallet ', el('code', {}, short(account)), onRight ? el('span', { class: 'ok' }, ' ✓ ' + c.name) : el('button', { class: 'primary', onclick: () => switchChain(CP().chain()) }, 'Switch wallet to ' + c.name));
+    w.append('Wallet ', el('code', {}, short(account)), onRight ? el('span', { class: 'ok' }, ' ✓ ' + c.name) : el('button', { class: 'primary', onclick: () => switchChain(CP().chain()) }, 'Switch wallet to ' + c.name),
+      el('a', { href: '#', class: 'dis', id: 'disconnect', title: 'Forget this wallet on this page', onclick: e => { e.preventDefault(); disconnect(); } }, 'disconnect'));
   }
   const ready = account && chainId === c.id && !busy;
   // 1. contract
   const s1 = el('div', { class: 'block' }); root.append(s1);
   s1.append(el('div', { class: 'row' }, el('label', {}, 'Contract name ', input('collName', { id: 'collName', maxlength: '80', placeholder: 'e.g. Wobble Studies' })),
-    el('button', { class: 'primary', id: 'createBtn', onclick: createContract, ...(ready ? {} : { disabled: '' }) }, 'Create contract')));
+    el('button', { class: 'primary', id: 'createBtn', onclick: reviewContract, ...(ready ? {} : { disabled: '' }) }, 'Create contract')));
   if (colls.length || pick === 'existing'){
     const sel = el('select', { id: 'collPick', onchange: e => { pick = e.target.value; txState = null; render(); } });
     colls.forEach(x => sel.append(el('option', { value: x.address, ...(pick === x.address ? { selected: '' } : {}) }, x.name + ' · ' + (x.minted || 0) + ' minted · ' + short(x.address))));
@@ -1785,11 +1998,12 @@ function render(){
     s1.append(el('div', { class: 'row' }, el('label', {}, 'Address ', input('existing', { id: 'collAddr', size: '44', placeholder: '0x…', spellcheck: 'false' })),
       el('button', { class: 'small', onclick: addExisting, ...(account && !busy ? {} : { disabled: '' }) }, 'Check & add')));
   }
+  galleryEl = el('div', { class: 'gallery', id: 'gallery' }); s1.append(galleryEl); renderGallery();
   // 2. artwork
   const s2 = el('div', { class: 'block' }); root.append(s2);
   const nameEl = el('input', { type: 'text', id: 'artName', maxlength: '80', placeholder: 'untitled', value: ($('tokName') || {}).value || '', oninput: e => { const tn = $('tokName'); if (tn){ tn.value = e.target.value; tn.dispatchEvent(new Event('input', { bubbles: true })); } } });
   s2.append(el('div', { class: 'row' }, el('label', {}, 'Artwork name ', nameEl),
-    el('button', { class: 'primary', id: 'mintBtn', onclick: mintArtwork, ...(ready && selected() ? {} : { disabled: '' }) }, 'Mint artwork')));
+    el('button', { class: 'primary', id: 'mintBtn', onclick: reviewArtwork, ...(ready && selected() ? {} : { disabled: '' }) }, 'Mint artwork')));
   const nTraits = (form.traits || []).filter(t => (t.k || '').trim() && (t.v || '').trim()).length;
   const desc = ($('tokDesc') || {}).value || '';
   const extras = [desc.trim() ? 'description' : '', nTraits ? nTraits + ' trait' + (nTraits > 1 ? 's' : '') : '', form.link.trim() ? 'link' : ''].filter(Boolean);
@@ -1801,40 +2015,30 @@ function render(){
     o.append(el('label', { class: 'col' }, 'Description', descEl));
     const tr = el('div', { class: 'traits' }); o.append(el('div', { class: 'lbl' }, 'Traits ', el('span', { class: 'hint' }, 'shown as properties on marketplaces')), tr);
     form.traits.forEach((t, i) => tr.append(el('div', { class: 'trait' },
-      el('input', { type: 'text', class: 'tk', placeholder: 'Trait, e.g. Mood', maxlength: '40', value: t.k || '', oninput: e => { form.traits[i].k = e.target.value; saveMeta(); } }),
-      el('input', { type: 'text', class: 'tv', placeholder: 'Value, e.g. Grumpy', maxlength: '80', value: t.v || '', oninput: e => { form.traits[i].v = e.target.value; saveMeta(); } }),
-      el('button', { class: 'small x', title: 'Remove trait', onclick: () => { form.traits.splice(i, 1); saveMeta(); render(); } }, '×'))));
+      el('input', { type: 'text', class: 'tk', placeholder: 'Trait, e.g. Mood', maxlength: '40', value: t.k || '', oninput: e => { form.traits[i].k = e.target.value; saveMeta(); invalidateReview(); } }),
+      el('input', { type: 'text', class: 'tv', placeholder: 'Value, e.g. Grumpy', maxlength: '80', value: t.v || '', oninput: e => { form.traits[i].v = e.target.value; saveMeta(); invalidateReview(); } }),
+      el('button', { class: 'small x', title: 'Remove trait', onclick: () => { form.traits.splice(i, 1); saveMeta(); if (txState && txState.stage === 'review') txState = null; render(); } }, '×'))));
     if (form.traits.length < 20) tr.append(el('button', { class: 'small', id: 'addTrait', onclick: () => { form.traits.push({ k: '', v: '' }); saveMeta(); render(); setTimeout(() => { const ks = root.querySelectorAll('.trait .tk'); ks[ks.length - 1] && ks[ks.length - 1].focus(); }, 0); } }, '+ Add trait'));
-    o.append(el('label', { class: 'col' }, 'External link', el('input', { type: 'url', id: 'artLink', placeholder: 'https://… (optional, e.g. your site or the share link)', value: form.link, oninput: e => { form.link = e.target.value; saveMeta(); } })));
+    o.append(el('label', { class: 'col' }, 'External link', el('input', { type: 'url', id: 'artLink', placeholder: 'https://… (optional, e.g. your site or the share link)', value: form.link, oninput: e => { form.link = e.target.value; saveMeta(); invalidateReview(); } })));
     o.append(el('div', { class: 'hint' }, 'All of this is stored on-chain with the artwork as metadata fields; more text costs a little more gas. Traits and link are remembered for the next mint; clear them if the next piece differs.'));
   }
-  if (selected()) s2.append(el('div', { class: 'hint' }, 'Mints this drawing as the next piece of ', el('b', {}, selected().name), '. One transaction; the wallet shows the exact gas.'));
-  // progress / result
-  const r = el('div', { class: 'result' }); root.append(r);
-  if (t && t.stage === 'signing') r.append(el('div', { class: 'hint' }, 'Estimating gas, then confirm in your wallet…'));
-  else if (t && t.stage === 'pending') r.append(el('div', { class: 'hint' }, 'Sent. Waiting for confirmation… ', link(t.chain.explorer + '/tx/' + t.hash, 'view transaction ↗')));
-  else if (t && t.stage === 'done'){
-    if (t.kind === 'contract') r.append(el('b', { class: 'ok' }, '✓ Contract created. '), el('b', {}, t.coll.name), ' at ', link(t.chain.explorer + '/address/' + t.contract, short(t.contract) + ' ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'), el('div', { class: 'hint' }, 'It is selected below. Now name the artwork and mint it.'));
-    else {
-      const id = t.tokenId.toString();
-      r.append(el('b', { class: 'ok' }, '✓ Minted. '), el('b', {}, t.piece.name), ' is #' + id + ' of ' + t.coll.name + ' · ', link(t.chain.explorer + '/address/' + t.contract, 'contract ↗'), ' · ', link(t.chain.explorer + '/tx/' + t.hash, 'transaction ↗'));
-      if (t.chain.opensea) r.append(' · ', link('https://opensea.io/assets/' + t.chain.opensea + '/' + t.contract.toLowerCase() + '/' + id, 'OpenSea ↗'));
-      r.append(el('div', { class: 'hint' }, (t.bytes / 1024).toFixed(1) + ' KB of SVG stored on-chain' + (t.piece.attributes ? ', with ' + JSON.parse(t.piece.attributes).length + ' traits' : '') + '. Marketplaces may take a few minutes to index. Draw the next one and mint again.'));
-    }
-  }
-  else if (t && t.stage === 'error') r.append(el('div', { class: 'err' }, t.msg), t.hash ? link(c.explorer + '/tx/' + t.hash, ' transaction ↗') : '');
+  if (selected()) s2.append(el('div', { class: 'hint' }, 'Mints this drawing as the next piece of ', el('b', {}, selected().name), '. You review the fee before anything is sent.'));
+  resultEl = el('div', { class: 'result', id: 'result' }); root.append(resultEl); renderResult();
   statusEl = el('div', { class: 'status-line' }); root.append(statusEl);
   root.append(el('p', { class: 'hint foot' }, 'Each contract is an ABX Series (one contract, many artworks; up to ' + DEFAULT_SIZE.toLocaleString() + '). Image, name and description are stored on-chain; 5% royalty to you. Contracts you create are remembered in this browser, per network. ABX is prerelease; rehearse on Sepolia first.'));
   if (focused && $(focused)){ const f = $(focused); f.focus(); try { f.setSelectionRange(f.value.length, f.value.length); } catch {} }
+  loadGallery();
 }
 function mount(){
   const host = document.querySelector('.export.mint'); if (!host || root) return;
   root = el('div', { class: 'mintbox', id: 'mintbox' });
   host.append(root);
   const css = document.createElement('style');
-  css.textContent = '.mintbox{margin:6px 0 4px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px}.mintbox h3{font-size:14px;color:#fff;margin:0}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .nets button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .block{margin:10px 0;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:4px 0}.mintbox .row.wallet{margin-top:8px;font-size:13px;color:#e8f4f3}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 280px;min-width:0;max-width:100%;white-space:nowrap}.mintbox .row input,.mintbox .row select{font-size:13px;padding:4px 6px;min-width:140px;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .result{margin:6px 0;font-size:13px;color:#e8f4f3}.mintbox a{color:#bfe9ff}.mintbox .hint{font-size:12px;opacity:.9}.mintbox .foot{margin:8px 0 4px}.mintbox .opts{margin:6px 0 2px;padding:8px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.15)}.mintbox .opts label.col{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#e8f4f3;margin:0 0 8px}.mintbox .opts textarea,.mintbox .opts input{display:block;font-family:inherit;font-size:13px;line-height:1.35;padding:4px 6px;width:100%;height:auto;box-sizing:border-box;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge)}.mintbox .opts textarea{resize:vertical;min-height:44px}.mintbox .opts .lbl{font-size:12px;color:#e8f4f3;margin:0 0 4px}.mintbox .trait{display:flex;gap:6px;align-items:center;margin:0 0 4px}.mintbox .trait .tk{flex:1 1 40%}.mintbox .trait .tv{flex:1 1 60%}.mintbox .trait .x{margin:0;padding:2px 8px}.mintbox .traits{margin:0 0 8px}';
+  css.textContent = '.mintbox{margin:6px 0 4px;padding:10px 10px 4px;background:rgba(0,0,0,.18);border:2px solid var(--chrome-edge)}.mintbox .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px}.mintbox h3{font-size:14px;color:#fff;margin:0}.mintbox .dim{font-weight:400;opacity:.8;font-size:12px}.mintbox .ok{color:#9ff0c5}.mintbox .err{color:#ffb3a7;font-size:13px;margin-top:4px}.mintbox code{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.25);padding:1px 4px;color:#fff}.mintbox .status-line{font-size:12px;color:#ffd9d0;min-height:1em}.mintbox .status-line[data-kind=err]{color:#ffb3a7}.mintbox button{margin:2px 4px 2px 0}.mintbox .nets button.on{background:#fff;color:#1b3a3a;font-weight:700}.mintbox .block{margin:10px 0;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)}.mintbox .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:4px 0}.mintbox .row.wallet{margin-top:8px;font-size:13px;color:#e8f4f3}.mintbox .row label{display:flex;align-items:center;gap:6px;font-size:12px;color:#e8f4f3;flex:1 1 280px;min-width:0;max-width:100%;white-space:nowrap}.mintbox .row input,.mintbox .row select{font-size:13px;padding:4px 6px;min-width:140px;flex:1;max-width:100%}.mintbox .row select{text-overflow:ellipsis}.mintbox .result{margin:6px 0;font-size:13px;color:#e8f4f3}.mintbox a{color:#bfe9ff}.mintbox .hint{font-size:12px;opacity:.9}.mintbox .foot{margin:8px 0 4px}.mintbox .dis{margin-left:auto;font-size:12px}.mintbox .review{margin:4px 0;padding:8px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.25)}.mintbox .rv{display:flex;gap:10px;align-items:flex-start}.mintbox .thumb{width:84px;height:84px;object-fit:contain;background:#fff;border:2px solid var(--chrome-edge);flex:none}.mintbox table.kv{font-size:12px;border-collapse:collapse;margin:0 0 6px}.mintbox table.kv td{padding:2px 8px 2px 0;color:#e8f4f3;vertical-align:top;overflow-wrap:anywhere}.mintbox table.kv td:first-child{color:#cfe9e8;white-space:nowrap}.mintbox .gallery{margin:6px 0 0}.mintbox .gallery .lbl{font-size:12px;color:#e8f4f3;margin:0 0 4px}.mintbox .strip{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.mintbox .piece{position:relative;display:block;width:56px;height:56px;background:#fff;border:2px solid var(--chrome-edge);text-decoration:none}.mintbox .piece img{width:100%;height:100%;object-fit:contain;display:block}.mintbox .piece .noimg{display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:#888}.mintbox .piece .cap{position:absolute;left:0;bottom:0;font:10px ui-monospace,Menlo,Consolas,monospace;background:rgba(0,0,0,.65);color:#fff;padding:0 3px}.mintbox .piece:hover,.mintbox .piece:focus-visible{border-color:var(--accent);outline:none}.mintbox .opts{margin:6px 0 2px;padding:8px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.15)}.mintbox .opts label.col{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#e8f4f3;margin:0 0 8px}.mintbox .opts textarea,.mintbox .opts input{display:block;font-family:inherit;font-size:13px;line-height:1.35;padding:4px 6px;width:100%;height:auto;box-sizing:border-box;background:var(--chrome);color:var(--ink);border:2px solid var(--chrome-edge)}.mintbox .opts textarea{resize:vertical;min-height:44px}.mintbox .opts .lbl{font-size:12px;color:#e8f4f3;margin:0 0 4px}.mintbox .trait{display:flex;gap:6px;align-items:center;margin:0 0 4px}.mintbox .trait .tk{flex:1 1 40%}.mintbox .trait .tv{flex:1 1 60%}.mintbox .trait .x{margin:0;padding:2px 8px}.mintbox .traits{margin:0 0 8px}';
   document.head.appendChild(css);
   render();
+  CP().onChange(() => { if (txState && txState.stage === 'review' && txState.kind === 'artwork') invalidateReview(); });   // the drawing or its name/description changed
+  reconnect();
   const tn = $('tokName'); if (tn) tn.addEventListener('input', () => { const a = $('artName'); if (a && a.value !== tn.value) a.value = tn.value; });
   const td = $('tokDesc'); if (td) td.addEventListener('input', () => { const a = $('artDesc'); if (a && a.value !== td.value) a.value = td.value; });
   const sel = $('abxChain'); if (sel) sel.addEventListener('change', () => { if (!CHAINS[sel.value].testnet) lastMain = sel.value; txState = null; if (!selected()) pick = (collsHere()[0] || {}).address || ''; render(); });
@@ -1842,7 +2046,7 @@ function mount(){
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 
 // Test hooks (pure functions only; nothing here touches a wallet).
-window.__abxMint = { attributesJSON, keccakHex, utf8, encodeCall, encodeDeploy, encodeSeriesDeploy, encodePredict, encodeMintPiece, buildParams, buildSeriesParams, pieceFields, selector, PARAMS_T, SERIES_PARAMS_T, FACTORY, SERIES_FACTORY, RENDERER, checksum, tag, decodeString, mintedIds, TRANSFER_TOPIC };
+window.__abxMint = { parseTokenURI, attributesJSON, keccakHex, utf8, encodeCall, encodeDeploy, encodeSeriesDeploy, encodePredict, encodeMintPiece, buildParams, buildSeriesParams, pieceFields, selector, PARAMS_T, SERIES_PARAMS_T, FACTORY, SERIES_FACTORY, RENDERER, checksum, tag, decodeString, mintedIds, TRANSFER_TOPIC };
 })();
 
 </script>
