@@ -10,6 +10,7 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Adjustable wiggle amount, speed, and frame count; the amount can be set per layer with the **All layers / This layer** toggle
 - Undo / redo and keyboard shortcuts: `P L R O E G V` pick tools, `[ ]` brush size, `⌘/Ctrl+Z` undo, `⇧⌘/Ctrl+Z` redo, `Space` play/pause, `⌘/Ctrl+S` save, `F` full screen, `?` shows the list
 - Save / open projects as JSON, autosave to the browser
+- Collapsible sidebar sections (click a heading); **Project** and **Mint onchain** start collapsed, and each section's open/closed state is remembered in the browser
 - Download or copy the finished SVG
 - **Copy link** makes a shareable URL that plays the animation; the whole project is compressed into the link itself, so nothing is uploaded and anyone can hit **Remix** to open it in the editor
 - **Mint onchain** from the page with [ABX by Art Blocks](https://docs.abx.io/) and a browser wallet: create a contract, then mint each drawing into it, image and metadata stored fully on-chain, with a live 24 KB budget meter

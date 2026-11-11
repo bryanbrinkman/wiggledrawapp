@@ -147,6 +147,18 @@ input[type=file]{display:none}
 .side .sec{margin:8px 0 0}
 .side .sec:first-child{margin-top:0}
 .side .sec + *{margin-top:0}
+/* Collapsible sections: the heading is a button; a collapsed heading hides the block right after it. */
+.sec-t{all:unset;box-sizing:border-box;display:flex;align-items:baseline;gap:6px;width:100%;padding:3px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sec-t::before{content:'▾';display:inline-block;width:.9em;font-size:11px;transition:transform .12s}
+.sec-t:hover{color:#fff}
+.sec-t:active{transform:none}
+.sec-t:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.sec-t .dim{display:none;margin-left:auto;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec.collapsed .sec-t::before{transform:rotate(-90deg)}
+.sec.collapsed .sec-t .dim{display:inline}
+.sec.collapsed{border-bottom:1px solid rgba(255,255,255,.2)}
+.sec.collapsed + *{display:none !important}
+@media (prefers-reduced-motion:reduce){.sec-t::before{transition:none}}
 .frames{display:none;margin:0 8px 8px}
 body.anim .frames{display:flex}
 body.anim #framesRow{display:none}
@@ -241,7 +253,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button id="fs" class="fs" title="Full screen (F)">⛶</button>
 </div>
 
-<h2 class="sec">Layers</h2>
+<h2 class="sec" data-sec="layers"><button class="sec-t" aria-expanded="true">Layers <span class="dim">add · hide · reorder · frame-by-frame</span></button></h2>
 <div class="bar" aria-label="Layers">
   <div class="layers" id="layers"></div>
   <button class="small" id="addLayer" title="Add a layer above the selected one">+ Layer</button>
@@ -254,7 +266,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="animMode" aria-pressed="false" title="Frame-by-frame: draw each frame separately, like Procreate's animation assist">Frame-by-frame</button>
 </div>
 
-<h2 class="sec">Color &amp; brush</h2>
+<h2 class="sec" data-sec="color"><button class="sec-t" aria-expanded="true">Color &amp; brush <span class="dim">palette · brush size</span></button></h2>
 <div class="bar">
   <div class="palette" id="palette"></div>
   <input type="color" id="custom" value="#161616" title="Custom color">
@@ -262,7 +274,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <label class="sl" title="Brush size ( [ and ] )">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
 </div>
 
-<h2 class="sec">Wiggle</h2>
+<h2 class="sec" data-sec="wiggle"><button class="sec-t" aria-expanded="true">Wiggle <span class="dim">amount · speed · frames</span></button></h2>
 <div class="bar">
   <label class="sl" title="How far each point jitters between frames">Amount <input type="range" id="amp" min="0" max="8" step="0.5" value="2"><output id="ampOut">2</output></label>
   <button class="small" id="wigScope" aria-pressed="false" title="Amount applies to every layer, or only the selected layer">All layers</button>
@@ -272,7 +284,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button id="play" aria-pressed="true" title="Play / pause the preview (Space)">Pause</button>
 </div>
 
-<h2 class="sec">Canvas</h2>
+<h2 class="sec" data-sec="canvas"><button class="sec-t" aria-expanded="true">Canvas <span class="dim">paper · size</span></button></h2>
 <div class="bar">
   <label class="sl">Paper <input type="color" id="bg" value="#fbfaf3" title="Background colour"></label>
   <label class="sl">Size <select id="dims" title="Canvas size (changing it clears the drawing)">
@@ -283,7 +295,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   </select></label>
 </div>
 
-<h2 class="sec">Project</h2>
+<h2 class="sec collapsed" data-sec="project"><button class="sec-t" aria-expanded="false">Project <span class="dim">title · new · open · save</span></button></h2>
 <div class="export">
   <div class="row">
     <label class="field">Title <input type="text" id="tokName" maxlength="80" placeholder="untitled"></label>
@@ -296,7 +308,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   </div>
 </div>
 
-<h2 class="sec">Export &amp; share</h2>
+<h2 class="sec" data-sec="export"><button class="sec-t" aria-expanded="true">Export &amp; share <span class="dim">SVG · PNG · GIF · link</span></button></h2>
 <div class="export">
   <div class="row">
     <button class="primary" id="download" title="Download the animated SVG">Download SVG</button>
@@ -310,7 +322,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <textarea id="code" readonly spellcheck="false" aria-label="SVG source"></textarea>
 </div>
 
-<h2 class="sec">Mint onchain</h2>
+<h2 class="sec collapsed" data-sec="mint"><button class="sec-t" aria-expanded="false">Mint onchain <span class="dim">ABX · create contract · mint artwork</span></button></h2>
 <div class="export mint" id="mint">
   <!-- state holders driven by the mint box below: the description (mirrored into More options) and the network (driven by the Mainnet / Sepolia tabs) -->
   <input type="hidden" id="tokDesc">
@@ -321,7 +333,6 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
             <option value="sepolia">Sepolia (free testnet for Ethereum)</option>
             <option value="base-sepolia">Base Sepolia (free testnet for Base)</option>
           </select>
-</div>
 </div>
 </aside>
 </main>
@@ -1396,6 +1407,22 @@ function enterView(obj){
 }
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#v=')) location.reload(); });
 
+// ---------- collapsible sidebar sections ----------
+// Project and Mint start collapsed (see the markup); each section's state is remembered per browser.
+{
+  const KEY = 'chainpainter:sections';
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch {}
+  document.querySelectorAll('.sec[data-sec]').forEach(h => {
+    const b = h.querySelector('.sec-t'), id = h.dataset.sec;
+    const set = (closed, store) => {
+      h.classList.toggle('collapsed', closed); b.setAttribute('aria-expanded', String(!closed));
+      if (store){ saved[id] = closed; try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {} fitCanvas(); }
+    };
+    if (typeof saved[id] === 'boolean') set(saved[id], false);
+    b.addEventListener('click', () => set(!h.classList.contains('collapsed'), true));
+    b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') e.stopPropagation(); }); // keep Space from toggling playback
+  });
+}
 // ---------- bridge for the mint module (the last script block) ----------
 const changeHooks = [];
 window.ChainPainter = {
