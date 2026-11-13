@@ -8,6 +8,7 @@ A tiny browser paint app that draws **SVG that wobbles**. Every stroke is jitter
 - Layers (add, hide, reorder, rename, delete)
 - **Frame-by-frame** mode (like Procreate's animation assist): a frame strip under the canvas, strokes belong to the frame you draw them on, **All frames** for backgrounds and holds, onion skin, add / duplicate / delete frames, up to 12. Wiggle still applies on top.
 - **Swatch setups**: the save and folder icons under the palette store the colours you added with **+** as a named setup and load one back (kept in the browser; the folder dialog also resets to the default swatches)
+- **Opacity** slider per layer (in Layers), from 5% to 100%. The layer fades as one image, so overlapping strokes on it do not darken each other. In the SVG it is a single `opacity` attribute on the layer's group, about 20 bytes per frame
 - **Glitch** (in Layers) toggles a glitch effect on the selected layer: red and cyan colour‑split ghosts behind it and displaced slices on top, re‑rolled every frame. The preview, GIF, PNG and exported SVG all show the same thing. In the SVG it costs about 1.1 KB per glitched layer at three frames (two shared `feColorMatrix` filters, three `clipPath` bands, and a few `<use>` references per frame)
 - Adjustable wiggle amount, speed, and frame count; the amount can be set per layer with the **All layers / This layer** toggle
 - Undo / redo and keyboard shortcuts: `P L R O E G V` pick tools, `[ ]` brush size, `⌘/Ctrl+Z` undo, `⇧⌘/Ctrl+Z` redo, `Space` play/pause, `⌘/Ctrl+S` save, `F` full screen, `?` shows the list

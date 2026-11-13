@@ -143,6 +143,7 @@ canvas#c.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),4px 
 label.sl{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
 label.sl input[type=range]{width:90px;accent-color:var(--accent)}
 label.sl output{min-width:2ch;text-align:right}
+#layerOpacityOut{min-width:4ch}
 input[type=color]{width:32px;height:28px;border:2px solid var(--chrome-edge);background:var(--chrome);padding:0;cursor:pointer}
 .export{margin:0 8px 10px;display:flex;flex-direction:column;gap:6px}
 .export .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -299,7 +300,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <label class="sl" title="Brush size ( [ and ] )">Size <input type="range" id="size" min="1" max="40" value="6"><output id="sizeOut">6</output></label>
 </div>
 
-<h2 class="sec" data-sec="layers"><button class="sec-t" aria-expanded="true">Layers <span class="dim">add · hide · glitch · frame-by-frame</span></button></h2>
+<h2 class="sec" data-sec="layers"><button class="sec-t" aria-expanded="true">Layers <span class="dim">add · hide · opacity · glitch · frames</span></button></h2>
 <div class="bar" aria-label="Layers">
   <div class="layers" id="layers"></div>
   <button class="small" id="addLayer" title="Add a layer above the selected one">+ Layer</button>
@@ -310,6 +311,7 @@ button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:var(--shado
   <button class="small" id="clear" title="Remove every stroke on the selected layer">Clear</button>
   <button class="small" id="delLayer" title="Delete the selected layer">Delete</button>
   <button class="small" id="glitchLayer" aria-pressed="false" title="Glitch the selected layer: colour-split ghosts and displaced slices that change every frame. Shows in the preview and in every export, including the mint">Glitch</button>
+  <label class="sl" title="Opacity of the selected layer. Shows in the preview and in every export, including the mint">Opacity <input type="range" id="layerOpacity" min="5" max="100" step="5" value="100"><output id="layerOpacityOut">100%</output></label>
   <button class="small" id="animMode" aria-pressed="false" title="Frame-by-frame: draw each frame separately, like Procreate's animation assist">Frame-by-frame</button>
 </div>
 
@@ -585,8 +587,11 @@ function glitchFrame(li, f){
   const first = Math.floor(r() * GLITCH_BANDS), shift = () => (r() < 0.5 ? -1 : 1) * Math.round(S.w * (0.02 + r() * 0.06));
   return { a, slices: [{ b: first, dx: shift() }, { b: (first + 1) % GLITCH_BANDS, dx: shift() }] };
 }
+// Layer opacity: undefined means fully opaque. The layer is composited as a whole, so overlapping strokes do not darken each other.
+const layerAlpha = L => (L && typeof L.opacity === 'number') ? Math.max(0.05, Math.min(1, L.opacity)) : 1;
+const alphaAttr = a => String(+a.toFixed(2)).replace(/^0\./, '.');
 let tintC = null;
-function drawGlitch(target, src, li, f, k){   // src: the rendered layer; k: device px per canvas px
+function drawGlitch(target, src, li, f, k, alpha = 1){   // src: the rendered layer; k: device px per canvas px; alpha: the layer's opacity
   const g = glitchFrame(li, f), bands = glitchBands(li), W = src.width, H = src.height;
   if (!tintC) tintC = document.createElement('canvas');
   if (tintC.width !== W || tintC.height !== H){ tintC.width = W; tintC.height = H; }
@@ -594,10 +599,11 @@ function drawGlitch(target, src, li, f, k){   // src: the rendered layer; k: dev
   for (const [color, dx] of [[GLITCH_R, -g.a], [GLITCH_C, g.a]]){
     tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, W, H); tc.drawImage(src, 0, 0);
     tc.globalCompositeOperation = 'source-in'; tc.fillStyle = color; tc.fillRect(0, 0, W, H);
-    target.globalAlpha = 0.8; target.drawImage(tintC, Math.round(dx * k), 0); target.globalAlpha = 1;
+    target.globalAlpha = 0.8 * alpha; target.drawImage(tintC, Math.round(dx * k), 0);
   }
-  target.drawImage(src, 0, 0);
+  target.globalAlpha = alpha; target.drawImage(src, 0, 0);
   for (const sl of g.slices){ const b = bands[sl.b], y = Math.round(b.y * k), h = Math.round(b.h * k); if (h > 0) target.drawImage(src, 0, y, W, h, Math.round(sl.dx * k), y, W, h); }
+  target.globalAlpha = 1;
 }
 function draw(){
   if (!cache) buildCache();
@@ -621,7 +627,7 @@ function draw(){
     }
     for (const e of cache[li]) if (inFrame(e.st, f)) paintStroke(oc, e.st, e.paths[f]);
     if (live && li === S.active) paintStroke(oc, live, new Path2D(framePaths(live, li * 100000 + L.strokes.length, layerAmp(L))[f]));
-    if (L.glitch) drawGlitch(ctx, o, li, f, dpr); else ctx.drawImage(o, 0, 0);
+    if (L.glitch) drawGlitch(ctx, o, li, f, dpr, layerAlpha(L)); else { ctx.globalAlpha = layerAlpha(L); ctx.drawImage(o, 0, 0); ctx.globalAlpha = 1; }
   });
   if (flashOn){ ctx.fillStyle = 'rgba(255,60,40,.55)'; ctx.fillRect(0, 0, cv.width, cv.height); }
   if (!viewing && !live && !totalStrokes()){
@@ -1213,6 +1219,7 @@ function renderLayers(){
     b.dataset.hidden = L.visible ? '0' : '1';
     b.innerHTML = `<span class="eye">${L.visible ? '●' : '○'}</span><span></span>`;
     b.lastChild.textContent = L.name;
+    if (layerAlpha(L) < 1){ const w = document.createElement('span'); w.className = 'wig'; w.textContent = Math.round(layerAlpha(L) * 100) + '%'; w.title = 'This layer is ' + w.textContent + ' opaque'; b.appendChild(w); }
     if (L.glitch){ const w = document.createElement('span'); w.className = 'wig'; w.textContent = 'glitch'; w.title = 'This layer is glitched'; b.appendChild(w); }
     if (typeof L.amp === 'number'){ const w = document.createElement('span'); w.className = 'wig'; w.textContent = '~' + L.amp; w.title = 'This layer wiggles ' + L.amp + ' (others ' + S.amp + ')'; b.appendChild(w); }
     b.addEventListener('click', () => { S.active = i; renderLayers(); syncHistoryButtons(); syncAmpSlider(); });
@@ -1221,6 +1228,7 @@ function renderLayers(){
     box.appendChild(b);
   }
   $('toggleLayer').textContent = layer().visible ? 'Hide' : 'Show'; $('glitchLayer').setAttribute('aria-pressed', String(!!layer().glitch));
+  { const op = Math.round(layerAlpha(layer()) * 100); $('layerOpacity').value = op; $('layerOpacityOut').value = op + '%'; }
   $('delLayer').disabled = S.layers.length < 2;
   $('layerUp').disabled = S.active >= S.layers.length - 1;
   $('layerDown').disabled = S.active <= 0;
@@ -1229,6 +1237,13 @@ $('addLayer').addEventListener('click', () => {
   S.layers.splice(S.active + 1, 0, newLayer('Layer ' + (S.layers.length + 1))); S.active++; renderLayers(); invalidate(); draw();
 });
 $('toggleLayer').addEventListener('click', () => { layer().visible = !layer().visible; renderLayers(); invalidate(); draw(); });
+// Opacity: live while dragging, committed (saved, size re-checked) on release.
+$('layerOpacity').addEventListener('input', e => { const v = +e.target.value, L = layer(); if (v >= 100) delete L.opacity; else L.opacity = v / 100; $('layerOpacityOut').value = v + '%'; draw(); });
+$('layerOpacity').addEventListener('change', () => {
+  const L = layer();
+  if (L.opacity != null && budgetBytes() > LIMIT()){ delete L.opacity; flashCanvas(); toast('That would go over 96 KB. ' + FULL_HINT); }
+  renderLayers(); invalidate(); draw();
+});
 $('glitchLayer').addEventListener('click', () => {
   const L = layer(); L.glitch = !L.glitch;
   if (L.glitch && budgetBytes() > LIMIT()){ L.glitch = false; flashCanvas(); toast('Glitch would go over 96 KB. ' + FULL_HINT); }
@@ -1247,7 +1262,7 @@ $('delLayer').addEventListener('click', async () => {
 // ---------- project save / open ----------
 function projectJSON(){
   return JSON.stringify({ app: 'chainpainter', v: 2, name: S.name, desc: S.desc, abxChain: S.abxChain, anim: S.anim, cur: S.cur, w: S.w, h: S.h, bg: S.bg, amp: S.amp, fps: S.fps, frames: S.frames, seed: S.seed,
-    layers: S.layers.map(L => ({ name: L.name, visible: L.visible, strokes: L.strokes, ...(typeof L.amp === 'number' ? { amp: L.amp } : {}), ...(L.glitch ? { glitch: true } : {}) })) });
+    layers: S.layers.map(L => ({ name: L.name, visible: L.visible, strokes: L.strokes, ...(typeof L.amp === 'number' ? { amp: L.amp } : {}), ...(L.glitch ? { glitch: true } : {}), ...(layerAlpha(L) < 1 ? { opacity: layerAlpha(L) } : {}) })) });
 }
 function loadProject(obj){
   if (!obj || !['chainpainter', 'wiggle-paint'].includes(obj.app) || !Array.isArray(obj.layers)) throw new Error('Not a ChainPainter project');
@@ -1255,7 +1270,7 @@ function loadProject(obj){
   S.abxChain = ['ethereum', 'base', 'arbitrum', 'base-sepolia', 'sepolia'].includes(obj.abxChain) ? obj.abxChain : 'ethereum';
   S.amp = obj.amp ?? 2; S.fps = obj.fps ?? 8; S.frames = Math.max(2, Math.min(12, obj.frames ?? 3)); S.seed = obj.seed ?? ((Math.random() * 1e9) | 0);
   S.anim = !!obj.anim; S.cur = Math.max(0, Math.min(S.frames - 1, obj.cur | 0));
-  S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [], ops: (Array.isArray(L.strokes) ? L.strokes : []).map(() => ({ t: 'stroke' })), ...(typeof L.amp === 'number' ? { amp: L.amp } : {}), ...(L.glitch ? { glitch: true } : {}) }));
+  S.layers = obj.layers.map((L, i) => ({ name: L.name || 'Layer ' + (i + 1), visible: L.visible !== false, strokes: Array.isArray(L.strokes) ? L.strokes : [], redo: [], ops: (Array.isArray(L.strokes) ? L.strokes : []).map(() => ({ t: 'stroke' })), ...(typeof L.amp === 'number' ? { amp: L.amp } : {}), ...(L.glitch ? { glitch: true } : {}), ...(typeof L.opacity === 'number' && L.opacity > 0 && L.opacity < 1 ? { opacity: L.opacity } : {}) }));
   if (!S.layers.length) S.layers = [newLayer('Layer 1')];
   S.active = Math.min(S.layers.length - 1, obj.active ?? S.layers.length - 1);
   syncControls();
@@ -1329,12 +1344,13 @@ function toSVG(){
     layers.forEach(({ L, li, paths }) => {
       const paints = [], erases = [];
       L.strokes.forEach((st, i) => { if (inFrame(st, f)) (st.erase ? erases : paints).push({ st, d: paths[i][f] }); });
-      const glitch = L.glitch && paints.length;
-      if (!erases.length && !glitch){ pending.push(...paints); return; }
+      const glitch = L.glitch && paints.length, alpha = layerAlpha(L);
+      if (!erases.length && !glitch && (alpha === 1 || !paints.length)){ pending.push(...paints); return; }
       flush();
       const id = `m${li + 1}f${f}`, gid = `g${li + 1}f${f}`;
       if (erases.length) defs += `<mask id="${id}"><rect width="${S.w}" height="${S.h}" fill="#fff"/><g stroke="#000">${runs(erases, false)}</g></mask>`;
-      const group = `<g${glitch ? ` id="${gid}"` : ''}${erases.length ? ` mask="url(#${id})"` : ''}>${runs(paints, true)}</g>`;
+      // Group opacity fades the layer as one image; the glitch copies reference this group, so they fade with it.
+      const group = `<g${glitch ? ` id="${gid}"` : ''}${alpha < 1 ? ` opacity="${alphaAttr(alpha)}"` : ''}${erases.length ? ` mask="url(#${id})"` : ''}>${runs(paints, true)}</g>`;
       if (!glitch){ frame += group; return; }
       // Glitch: red and cyan ghosts behind the layer, the layer itself, then displaced slices of it on top.
       const g = glitchFrame(li, f);
@@ -1496,7 +1512,7 @@ function renderFrameTo(f, k){
     if (!L.visible || !L.strokes.length) return;
     lc.setTransform(1, 0, 0, 1, 0, 0); lc.globalCompositeOperation = 'source-over'; lc.clearRect(0, 0, W, H); lc.scale(k, k);
     for (const e of cache[li]) if (inFrame(e.st, f)) paintStroke(lc, e.st, e.paths[f % e.paths.length]);
-    if (L.glitch) drawGlitch(oc, lay, li, f, k); else oc.drawImage(lay, 0, 0);
+    if (L.glitch) drawGlitch(oc, lay, li, f, k, layerAlpha(L)); else { oc.globalAlpha = layerAlpha(L); oc.drawImage(lay, 0, 0); oc.globalAlpha = 1; }
   });
   return oc.getImageData(0, 0, W, H);
 }
